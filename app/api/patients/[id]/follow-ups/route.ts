@@ -1,0 +1,289 @@
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { prisma } from '@/lib/prisma';
+
+// GET: Fetch notifications for a patient (replacing follow-ups)
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  console.log('📋 GET /api/patients/[id]/follow-ups called');
+  
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.clinicId) {
+      console.log('❌ No session or clinicId');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    console.log('✅ Session clinicId:', session.user.clinicId);
+    
+    // Get id from params
+    const { id: patientId } = await params;
+    console.log('📝 Patient ID:', patientId);
+    
+    if (!patientId || patientId === 'undefined') {
+      console.log('❌ Invalid patient ID');
+      return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
+    }
+
+    // Verify patient belongs to this clinic
+    const patient = await prisma.patient.findFirst({
+      where: {
+        id: patientId,
+        clinicId: session.user.clinicId,
+      },
+    });
+
+    if (!patient) {
+      console.log('❌ Patient not found or unauthorized');
+      return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
+    }
+
+    // Fetch notifications for this patient (these are your "follow-ups")
+    const notifications = await prisma.notification.findMany({
+      where: {
+        patientId: patientId,
+        clinicId: session.user.clinicId,
+      },
+      orderBy: {
+        scheduledDate: 'asc',
+      },
+      select: {
+        id: true,
+        type: true,
+        category: true,
+        message: true,
+        scheduledDate: true,
+        status: true,
+        priority: true,
+        deliveryMethod: true,
+        sentAt: true,
+        deliveredAt: true,
+        readAt: true,
+        failureReason: true,
+        createdAt: true,
+        medicineReminder: {
+          select: {
+            medicineName: true,
+            dosage: true,
+            frequency: true,
+          }
+        }
+      },
+    });
+
+    console.log(`✅ Found ${notifications.length} notifications for patient`);
+
+    // Transform notifications to follow-up format for frontend compatibility
+    const formattedNotifications = notifications.map((notification) => ({
+      // Follow-up compatible fields
+      id: notification.id,
+      patientId: patientId,
+      type: notification.type,
+      scheduledDate: notification.scheduledDate.toISOString(),
+      status: notification.status,
+      channel: notification.deliveryMethod,
+      message: notification.message,
+      
+      // Additional notification details
+      notificationId: notification.id,
+      category: notification.category,
+      priority: notification.priority,
+      sentAt: notification.sentAt?.toISOString(),
+      deliveredAt: notification.deliveredAt?.toISOString(),
+      readAt: notification.readAt?.toISOString(),
+      failureReason: notification.failureReason,
+      createdAt: notification.createdAt.toISOString(),
+      
+      // Medicine reminder info if applicable
+      medicineReminder: notification.medicineReminder ? {
+        medicineName: notification.medicineReminder.medicineName,
+        dosage: notification.medicineReminder.dosage,
+        frequency: notification.medicineReminder.frequency,
+      } : null,
+      
+      // Status indicators
+      isScheduled: notification.status === 'scheduled',
+      isSent: notification.status === 'sent',
+      isDelivered: notification.status === 'delivered',
+      isRead: notification.status === 'read',
+      isFailed: notification.status === 'failed',
+      
+      // Time calculations
+      isPastDue: notification.status === 'scheduled' && 
+                 new Date(notification.scheduledDate) < new Date(),
+      scheduledDateFormatted: notification.scheduledDate.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
+      scheduledTime: notification.scheduledDate.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    }));
+
+    // Sort: scheduled first, then by date
+    formattedNotifications.sort((a, b) => {
+      if (a.isScheduled && !b.isScheduled) return -1;
+      if (!a.isScheduled && b.isScheduled) return 1;
+      return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
+    });
+
+    return NextResponse.json(formattedNotifications);
+    
+  } catch (error) {
+    console.error('❌ Error fetching patient notifications:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
+  }
+}
+
+// POST: Create a new notification for a patient (replacing follow-up creation)
+export async function POST(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  console.log('📝 POST /api/patients/[id]/follow-ups called');
+  
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.clinicId) {
+      console.log('❌ No session or clinicId');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    console.log('✅ Session clinicId:', session.user.clinicId);
+    
+    // Get id from params
+    const { id: patientId } = await params;
+    console.log('📝 Patient ID:', patientId);
+    
+    if (!patientId || patientId === 'undefined') {
+      console.log('❌ Invalid patient ID');
+      return NextResponse.json({ error: 'Patient ID is required' }, { status: 400 });
+    }
+
+    // Get request body
+    const body = await request.json();
+    const { 
+      message, 
+      scheduledDate,
+      type = 'reminder',
+      category = 'reminder',
+      priority = 'normal'
+    } = body;
+    
+    // Validate required fields
+    if (!message?.trim()) {
+      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+    }
+    
+    if (!scheduledDate) {
+      return NextResponse.json({ error: 'Scheduled date is required' }, { status: 400 });
+    }
+    
+    // Verify patient belongs to this clinic
+    const patient = await prisma.patient.findFirst({
+      where: {
+        id: patientId,
+        clinicId: session.user.clinicId,
+      },
+      include: {
+        appInstallations: {
+          where: { isActive: true },
+          take: 1
+        }
+      }
+    });
+
+    if (!patient) {
+      console.log('❌ Patient not found or unauthorized');
+      return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
+    }
+    
+    // Check if patient has app installed (for push notifications)
+    if (patient.appInstallations.length === 0) {
+      return NextResponse.json({ 
+        error: 'Patient does not have the app installed',
+        message: 'Cannot schedule notification. Patient needs to install the app first.'
+      }, { status: 400 });
+    }
+    
+    // Check clinic's push notification balance
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: session.user.clinicId },
+      select: { pushNotificationBalance: true }
+    });
+    
+    if (!clinic || clinic.pushNotificationBalance <= 0) {
+      return NextResponse.json({ 
+        error: 'Insufficient notification balance',
+        message: 'Please top up your push notification balance to schedule notifications.'
+      }, { status: 400 });
+    }
+    
+    // Create the notification
+    const notification = await prisma.notification.create({
+      data: {
+        patientId: patientId,
+        clinicId: session.user.clinicId,
+        type: type,
+        category: category,
+        message: message.trim(),
+        scheduledDate: new Date(scheduledDate),
+        status: 'scheduled',
+        priority: priority,
+        deliveryMethod: 'push', // Always push since you're only using app notifications
+      },
+      include: {
+        patient: {
+          select: {
+            name: true,
+            mobile: true,
+          }
+        }
+      }
+    });
+    
+    // Decrement clinic's notification balance
+    await prisma.clinic.update({
+      where: { id: session.user.clinicId },
+      data: {
+        pushNotificationBalance: {
+          decrement: 1
+        }
+      }
+    });
+    
+    console.log(`✅ Notification scheduled for patient ${notification.patient.name} at ${scheduledDate}`);
+    
+    return NextResponse.json({
+  id: notification.id,
+  patientId: notification.patientId,
+  patientName: notification.patient.name,
+  patientMobile: notification.patient.mobile,
+  type: notification.type,
+  scheduledDate: notification.scheduledDate.toISOString(),
+  status: notification.status,
+  channel: notification.deliveryMethod,
+  message: notification.message,  // ✅ Notification message content
+  notificationId: notification.id,
+  success: true,
+  responseMessage: 'Notification scheduled successfully',  // ✅ Renamed to avoid conflict
+  remainingBalance: clinic.pushNotificationBalance - 1
+}, { status: 201 });
+  } catch (error) {
+    console.error('❌ Error creating patient notification:', error);
+    return NextResponse.json({ 
+      error: 'Failed to schedule notification',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
+  }
+}

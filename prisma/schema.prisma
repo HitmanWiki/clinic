@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model app_installations {
+  id          String    @id
+  patientId   String
+  clinicId    String
+  deviceType  String
+  appVersion  String
+  fcmToken    String?
+  installedAt DateTime  @default(now())
+  lastUsedAt  DateTime?
+  isActive    Boolean   @default(true)
+  clinics     clinics   @relation(fields: [clinicId], references: [id])
+  patients    patients  @relation(fields: [patientId], references: [id])
+
+  @@unique([patientId, deviceType])
+}
+
+model clinics {
+  id                      String                   @id
+  name                    String
+  doctorName              String
+  phone                   String                   @unique
+  email                   String?
+  address                 String
+  city                    String
+  googleReviewLink        String?
+  language                String                   @default("en")
+  subscriptionPlan        String                   @default("starter")
+  subscriptionStatus      String                   @default("active")
+  settings                Json?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime
+  hasAppUsers             Int                      @default(0)
+  pushDeliveryRate        Float                    @default(0.0)
+  pushNotificationBalance Int                      @default(100)
+  emergencyPhone          String?
+  logoUrl                 String?
+  primaryColor            String?                  @default("#2563EB")
+  secondaryColor          String?                  @default("#1E40AF")
+  supportEmail            String?
+  workingHours            String?                  @default("9:00 AM - 8:00 PM")
+  accentColor             String?                  @default("#F59E0B")
+  app_installations       app_installations[]
+  medicine_reminders      medicine_reminders[]
+  notification_analytics  notification_analytics[]
+  notifications           notifications[]
+  patients                patients[]
+  prescription_templates  prescription_templates[]
+  prescriptions           prescriptions[]
+  reviews                 reviews[]
+  uploaded_prescriptions  uploaded_prescriptions[]
+  users                   users?
+}
+
+model medicine_reminders {
+  id             String          @id
+  prescriptionId String
+  patientId      String
+  clinicId       String
+  medicineName   String
+  dosage         String
+  frequency      String
+  duration       String
+  instructions   String?
+  reminderTimes  String[]
+  startDate      DateTime
+  endDate        DateTime
+  status         String          @default("active")
+  createdAt      DateTime        @default(now())
+  clinics        clinics         @relation(fields: [clinicId], references: [id])
+  patients       patients        @relation(fields: [patientId], references: [id])
+  prescriptions  prescriptions   @relation(fields: [prescriptionId], references: [id])
+  notifications  notifications[]
+}
+
+model notification_analytics {
+  id             String   @id
+  clinicId       String
+  date           DateTime @default(now())
+  totalSent      Int      @default(0)
+  totalDelivered Int      @default(0)
+  totalRead      Int      @default(0)
+  totalFailed    Int      @default(0)
+  deliveryRate   Float    @default(0.0)
+  readRate       Float    @default(0.0)
+  clinics        clinics  @relation(fields: [clinicId], references: [id])
+
+  @@unique([clinicId, date])
+}
+
+model notifications {
+  id                 String              @id
+  patientId          String
+  clinicId           String
+  type               String
+  category           String              @default("reminder")
+  scheduledDate      DateTime
+  status             String              @default("pending")
+  message            String
+  priority           String              @default("normal")
+  deliveryMethod     String              @default("push")
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  readAt             DateTime?
+  failureReason      String?
+  medicineReminderId String?
+  createdAt          DateTime            @default(now())
+  clinics            clinics             @relation(fields: [clinicId], references: [id])
+  medicine_reminders medicine_reminders? @relation(fields: [medicineReminderId], references: [id])
+  patients           patients            @relation(fields: [patientId], references: [id])
+}
+
+model patients {
+  id                     String                   @id
+  clinicId               String
+  name                   String
+  mobile                 String
+  visitDate              DateTime                 @default(now())
+  notes                  String?
+  optOut                 Boolean                  @default(false)
+  createdAt              DateTime                 @default(now())
+  age                    Int?
+  appInstallDate         DateTime?
+  fcmToken               String?
+  gender                 String?
+  hasAppInstalled        Boolean                  @default(false)
+  lastAppLogin           DateTime?
+  otpCode                String?                  @db.VarChar(6)
+  otpExpiresAt           DateTime?
+  isVerified             Boolean                  @default(false)
+  app_installations      app_installations[]
+  medicine_reminders     medicine_reminders[]
+  notifications          notifications[]
+  clinics                clinics                  @relation(fields: [clinicId], references: [id])
+  prescriptions          prescriptions[]
+  reviews                reviews[]
+  uploaded_prescriptions uploaded_prescriptions[]
+
+  @@unique([clinicId, mobile])
+}
+
+model prescription_templates {
+  id        String   @id
+  clinicId  String
+  name      String
+  diagnosis String
+  medicines Json
+  createdAt DateTime @default(now())
+  clinics   clinics  @relation(fields: [clinicId], references: [id])
+}
+
+model prescriptions {
+  id                  String               @id
+  patientId           String
+  clinicId            String
+  visitDate           DateTime             @default(now())
+  diagnosis           String?
+  medicines           Json
+  nextVisitDate       DateTime?
+  notes               String?
+  createdAt           DateTime             @default(now())
+  enablePushReminders Boolean              @default(false)
+  medicine_reminders  medicine_reminders[]
+  clinics             clinics              @relation(fields: [clinicId], references: [id])
+  patients            patients             @relation(fields: [patientId], references: [id])
+}
+
+model reviews {
+  id             String    @id
+  patientId      String
+  clinicId       String
+  requestDate    DateTime  @default(now())
+  sentDate       DateTime?
+  receivedDate   DateTime?
+  status         String    @default("pending")
+  rating         Int?
+  reviewText     String?
+  platform       String    @default("google")
+  createdAt      DateTime  @default(now())
+  deliveryMethod String    @default("push")
+  scheduledDate  DateTime?
+  clinics        clinics   @relation(fields: [clinicId], references: [id])
+  patients       patients  @relation(fields: [patientId], references: [id])
+}
+
+model uploaded_prescriptions {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  file_name   String
+  file_url    String
+  file_type   String
+  file_size   Int
+  uploaded_by String
+  uploaded_at DateTime? @default(now()) @db.Timestamptz(6)
+  patient_id  String
+  clinic_id   String
+  clinics     clinics   @relation(fields: [clinic_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patients    patients  @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([clinic_id])
+  @@index([patient_id])
+  @@index([uploaded_at])
+}
+
+model users {
+  id        String   @id
+  clinicId  String   @unique
+  phone     String   @unique
+  email     String?  @unique
+  name      String?
+  role      String   @default("admin")
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  clinics   clinics  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+}
