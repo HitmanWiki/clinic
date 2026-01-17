@@ -48,47 +48,14 @@ declare module "next-auth/jwt" {
   }
 }
 
-// SECURITY: Input sanitization function
+// Input sanitization
 const sanitizeInput = (input: string): string => {
   if (!input) return '';
-  
-  // 1. Remove HTML/script tags
-  let sanitized = input.replace(/<[^>]*>?/gm, '');
-  
-  // 2. Remove potentially dangerous characters
-  sanitized = sanitized.replace(/[<>'"]/g, '');
-  
-  // 3. Trim whitespace
-  sanitized = sanitized.trim();
-  
-  return sanitized;
+  return input.replace(/<[^>]*>?/gm, '').replace(/[<>'"]/g, '').trim();
 };
 
-// SECURITY: Validate phone number format
 const isValidPhoneNumber = (phone: string): boolean => {
-  // Must be exactly 10 digits
-  if (phone.length !== 10) return false;
-  
-  // Must contain only digits
-  if (!/^\d+$/.test(phone)) return false;
-  
-  // Must start with 6,7,8,9 for Indian numbers
-  if (!/^[6789]/.test(phone)) return false;
-  
-  return true;
-};
-
-// SECURITY: Password validation
-const isValidPassword = (password: string): boolean => {
-  if (!password || password.length < 3) return false;
-  
-  // Basic password validation - adjust as needed
-  // You can add more rules like:
-  // - Minimum length
-  // - Require special characters
-  // - Require numbers, etc.
-  
-  return true;
+  return phone.length === 10 && /^\d+$/.test(phone) && /^[6789]/.test(phone);
 };
 
 export const authOptions: AuthOptions = {
@@ -101,87 +68,42 @@ export const authOptions: AuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        console.log("🔐 Login attempt received");
-        
-        // SECURITY: Validate input exists
-        if (!credentials?.phone || !credentials?.password) {
-          console.log("❌ Missing phone or password");
-          return null;
-        }
-        
-        // SECURITY: Sanitize inputs
-        const sanitizedPhone = sanitizeInput(credentials.phone);
-        const sanitizedPassword = sanitizeInput(credentials.password);
-        
-        console.log("🔍 Sanitized inputs:", {
-          phone: sanitizedPhone,
-          passwordLength: sanitizedPassword.length
-        });
-        
-        // SECURITY: Validate phone number format
-        if (!isValidPhoneNumber(sanitizedPhone)) {
-          console.log("❌ Invalid phone number format:", sanitizedPhone);
-          return null;
-        }
-        
-        // SECURITY: Validate password
-        if (!isValidPassword(sanitizedPassword)) {
-          console.log("❌ Invalid password format");
-          return null;
-        }
-        
         try {
-          console.log("🔍 Searching for user with phone:", sanitizedPhone);
+          if (!credentials?.phone || !credentials?.password) {
+            return null;
+          }
           
-          // SECURITY: Using Prisma with parameterized queries - SQL Injection protected
-          // Prisma automatically parameterizes queries, preventing SQL injection
+          const sanitizedPhone = sanitizeInput(credentials.phone);
+          const sanitizedPassword = sanitizeInput(credentials.password);
+          
+          if (!isValidPhoneNumber(sanitizedPhone)) {
+            return null;
+          }
+          
           const user = await prisma.users.findUnique({
-            where: { 
-              phone: sanitizedPhone // Using sanitized input
-            },
+            where: { phone: sanitizedPhone },
             include: { 
               clinics: {
                 include: {
-                  patients: {
-                    select: { 
-                      id: true,
-                      // SECURITY: Only select necessary fields
-                    }
-                  }
+                  patients: { select: { id: true } }
                 }
               }
             }
           });
           
           if (!user) {
-            console.log("❌ User not found for phone:", sanitizedPhone);
-            // SECURITY: Generic error message - don't reveal if user exists
             return null;
           }
           
-          console.log("✅ User found:", user.id);
-          
-          // SECURITY: Simple password check for now
-          // TODO: Implement proper password hashing with bcrypt
+          // Password check
           const isPasswordValid = sanitizedPassword === "clinic123";
-          
           if (!isPasswordValid) {
-            console.log("❌ Invalid password for user:", user.id);
-            // SECURITY: Generic error - don't reveal if password was close
             return null;
           }
           
-          console.log("✅ Password verified for user:", user.id);
-          
-          // Calculate app users count
           const appUsersCount = user.clinics.patients.length;
-          
-          // Get clinic data with safe defaults
           const clinicData = user.clinics;
-          const pushNotificationBalance = clinicData.pushNotificationBalance ?? 100;
-          const pushDeliveryRate = clinicData.pushDeliveryRate ?? 0.0;
           
-          // SECURITY: Return only necessary user data
           return {
             id: user.id,
             phone: user.phone,
@@ -189,18 +111,15 @@ export const authOptions: AuthOptions = {
             role: user.role || "admin",
             name: user.clinics.doctorName || "Clinic User",
             clinicId: user.clinicId,
-            pushNotificationBalance,
+            pushNotificationBalance: clinicData.pushNotificationBalance ?? 100,
             hasAppUsers: appUsersCount,
-            pushDeliveryRate,
+            pushDeliveryRate: clinicData.pushDeliveryRate ?? 0.0,
             subscriptionPlan: user.clinics.subscriptionPlan,
             subscriptionStatus: user.clinics.subscriptionStatus,
           };
           
         } catch (error) {
-          // SECURITY: Log error but don't expose details to client
-          console.error("❌ Authentication error:", error);
-          
-          // SECURITY: Generic error message
+          console.error("Auth error:", error);
           return null;
         }
       },
@@ -217,7 +136,6 @@ export const authOptions: AuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // SECURITY: Only store necessary claims in JWT
         token.id = user.id;
         token.clinicId = user.clinicId;
         token.phone = user.phone;
@@ -229,15 +147,12 @@ export const authOptions: AuthOptions = {
         token.pushDeliveryRate = user.pushDeliveryRate;
         token.subscriptionPlan = user.subscriptionPlan;
         token.subscriptionStatus = user.subscriptionStatus;
-        
-        console.log("🔑 JWT token created for clinic:", user.clinicId);
       }
       return token;
     },
     
     async session({ session, token }) {
       if (token && session.user) {
-        // SECURITY: Only expose necessary session data
         session.user.id = token.id as string;
         session.user.clinicId = token.clinicId as string;
         session.user.phone = token.phone as string;
@@ -249,14 +164,11 @@ export const authOptions: AuthOptions = {
         session.user.pushDeliveryRate = token.pushDeliveryRate as number;
         session.user.subscriptionPlan = token.subscriptionPlan as string;
         session.user.subscriptionStatus = token.subscriptionStatus as string;
-        
-        console.log("🔐 Session created for clinic:", token.clinicId);
       }
       return session;
     },
     
     async redirect({ url, baseUrl }) {
-      // SECURITY: Prevent open redirect vulnerabilities
       if (url.startsWith(baseUrl)) {
         return url;
       } else if (url.startsWith("/")) {
@@ -265,24 +177,41 @@ export const authOptions: AuthOptions = {
       return baseUrl;
     },
   },
-  // SECURITY: Additional security configurations
+  // CRITICAL FOR VERCEL:
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
-  
-  // SECURITY: Enable if you want to use cookies
+  // Use cookies that work on Vercel
   cookies: {
     sessionToken: {
-      name: process.env.NODE_ENV === "production" 
-        ? "__Secure-next-auth.session-token" 
-        : "next-auth.session-token",
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax", // Change to "none" if you have cross-domain issues
+        path: "/",
+        secure: true, // TRUE for production (Vercel uses HTTPS)
+      },
+    },
+    callbackUrl: {
+      name: `next-auth.callback-url`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true,
+      },
+    },
+    csrfToken: {
+      name: `next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: true,
       },
     },
   },
+  // Important for server-side APIs
+  useSecureCookies: process.env.NODE_ENV === "production",
 };
 
 const handler = NextAuth(authOptions);
