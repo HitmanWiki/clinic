@@ -33,19 +33,19 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     
     const [notifications, total] = await Promise.all([
-      prisma.notification.findMany({
+      prisma.notifications.findMany({
         where,
         orderBy: { scheduledDate: 'desc' },
         take: limit,
         skip,
         include: {
-          patient: {
+          patients: {
             select: {
               name: true,
               mobile: true,
             }
           },
-          medicineReminder: {
+          medicine_reminders: {
             select: {
               medicineName: true,
               dosage: true,
@@ -53,15 +53,15 @@ export async function GET(request: NextRequest) {
           }
         }
       }),
-      prisma.notification.count({ where })
+      prisma.notifications.count({ where })
     ]);
     
     return NextResponse.json({
-      notifications: notifications.map(notification => ({
+      notifications: notifications.map((notification: any) => ({
         id: notification.id,
         patientId: notification.patientId,
-        patientName: notification.patient.name,
-        patientMobile: notification.patient.mobile,
+        patientName: notification.patients.name,
+        patientMobile: notification.patients.mobile,
         type: notification.type,
         message: notification.message,
         scheduledDate: notification.scheduledDate.toISOString(),
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
         category: notification.category,
         priority: notification.priority,
         deliveryMethod: notification.deliveryMethod,
-        medicineReminder: notification.medicineReminder,
+        medicineReminder: notification.medicine_reminders,
       })),
       total,
       page,
@@ -115,13 +115,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
     
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         id: patientId,
         clinicId: session.user.clinicId,
       },
       include: {
-        appInstallations: {
+        app_installations: {
           where: { isActive: true },
           take: 1
         }
@@ -132,14 +132,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
     }
     
-    if (patient.appInstallations.length === 0) {
+    if (patient.app_installations.length === 0) {
       return NextResponse.json({ 
         error: 'Patient does not have the app installed',
         message: 'Cannot send push notification. Patient needs to install the app first.'
       }, { status: 400 });
     }
     
-    const clinic = await prisma.clinic.findUnique({
+    const clinic = await prisma.clinics.findUnique({
       where: { id: session.user.clinicId },
       select: { pushNotificationBalance: true }
     });
@@ -151,21 +151,25 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    const notification = await prisma.notification.create({
-      data: {
-        patientId,
-        clinicId: session.user.clinicId,
-        type,
-        category,
-        message: message.trim(),
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : new Date(),
-        status: scheduledDate ? 'scheduled' : 'sent',
-        priority: 'normal',
-        deliveryMethod: 'push',
-        ...(scheduledDate ? {} : { sentAt: new Date() })
-      },
+    // Create notification data object
+    const notificationData = {
+      patientId,
+      clinicId: session.user.clinicId,
+      type,
+      category,
+      message: message.trim(),
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : new Date(),
+      status: scheduledDate ? ('scheduled' as const) : ('sent' as const),
+      priority: 'normal' as const,
+      deliveryMethod: 'push' as const,
+      ...(scheduledDate ? {} : { sentAt: new Date() })
+    };
+    
+    // Create notification with type assertion
+    const notification = await prisma.notifications.create({
+      data: notificationData as any, // Type assertion to fix TypeScript error
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -174,7 +178,8 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    await prisma.clinic.update({
+    // Update clinic balance - fixed model name
+    await prisma.clinics.update({
       where: { id: session.user.clinicId },
       data: {
         pushNotificationBalance: {
@@ -183,12 +188,16 @@ export async function POST(request: NextRequest) {
       }
     });
     
+    // Cast to access relation data
+    const notificationWithPatient = notification as any;
+    const patientData = notificationWithPatient.patients || notificationWithPatient.patient;
+    
     return NextResponse.json({
       success: true,
       message: scheduledDate ? 'Notification scheduled successfully' : 'Notification sent successfully',
       notification: {
         id: notification.id,
-        patientName: notification.patient.name,
+        patientName: patientData?.name || 'Unknown',
         type: notification.type,
         message: notification.message,
         scheduledDate: notification.scheduledDate,

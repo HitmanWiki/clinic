@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     startOfWeek.setHours(0, 0, 0, 0);
 
     // ✅ FIRST: Fetch clinic data separately to ensure we get it
-    const clinicData = await prisma.clinic.findUnique({
+    const clinicData = await prisma.clinics.findUnique({
       where: { id: clinicId },
       select: {
         pushNotificationBalance: true,
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       totalFailed
     ] = await Promise.all([
       // Patients today
-      prisma.patient.count({
+      prisma.patients.count({
         where: {
           clinicId,
           visitDate: {
@@ -71,15 +71,15 @@ export async function GET(request: NextRequest) {
       }),
 
       // Total patients
-      prisma.patient.count({
+      prisma.patients.count({
         where: { clinicId }
       }),
 
       // Patients with app installed
-      prisma.patient.count({
+      prisma.patients.count({
         where: {
           clinicId,
-          appInstallations: {
+          app_installations: {
             some: {
               isActive: true
             }
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       }),
 
       // Active notifications scheduled
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'scheduled',
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       }),
 
       // Notifications sent today
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           sentAt: {
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       }),
 
       // Notifications sent this week (last 7 days)
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           sentAt: {
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
       }),
 
       // Total delivered notifications (all time)
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'delivered'
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
       }),
 
       // Total read notifications (all time)
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'read'
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       }),
 
       // Total failed notifications (all time)
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'failed'
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
     // ✅ FIXED: Calculate delivery rate properly
     // Use this week's sent notifications for delivery rate
     const sentThisWeek = notificationsSentThisWeek;
-    const successfulDeliveriesThisWeek = await prisma.notification.count({
+    const successfulDeliveriesThisWeek = await prisma.notifications.count({
       where: {
         clinicId,
         status: { in: ['delivered', 'read'] },
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate remaining notifications for today
-    const notificationsScheduledToday = await prisma.notification.count({
+    const notificationsScheduledToday = await prisma.notifications.count({
       where: {
         clinicId,
         status: 'scheduled',
@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Calculate patients with pending notifications
-    const patientsWithPendingNotifications = await prisma.patient.count({
+    const patientsWithPendingNotifications = await prisma.patients.count({
       where: {
         clinicId,
         notifications: {
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
 
     // Update clinic's hasAppUsers count if it's different
     if (clinicData.hasAppUsers !== patientsWithApp) {
-      await prisma.clinic.update({
+      await prisma.clinics.update({
         where: { id: clinicId },
         data: { hasAppUsers: patientsWithApp }
       });

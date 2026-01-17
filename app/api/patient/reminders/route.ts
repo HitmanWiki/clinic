@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const reminders = await prisma.medicineReminder.findMany({
+    const reminders = await prisma.medicine_reminders.findMany({
       where: {
         patientId: patientId,
         status: 'active',
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         endDate: { gte: today },
       },
       include: {
-        prescription: {
+        prescriptions: {
           select: {
             id: true,
             visitDate: true,

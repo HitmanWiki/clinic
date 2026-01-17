@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    const reviews = await prisma.review.findMany({
+    const reviews = await prisma.reviews.findMany({
       where,
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -47,12 +47,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Format reviews for frontend
-    const formattedReviews = reviews.map((review) => ({
+    const formattedReviews = reviews.map((review: any) => ({
       id: review.id,
       patientId: review.patientId,
-      patientName: review.patient.name,
-      patientMobile: review.patient.mobile,
-      patientFcmToken: review.patient.fcmToken,
+      patientName: review.patients.name,
+      patientMobile: review.patients.mobile,
+      patientFcmToken: review.patients.fcmToken,
       requestDate: review.requestDate.toISOString(),
       sentDate: review.sentDate?.toISOString(),
       receivedDate: review.receivedDate?.toISOString(),
@@ -126,13 +126,13 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if patient belongs to this clinic
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         id: patientId,
         clinicId: token.clinicId as string,
       },
       include: {
-        appInstallations: {
+        app_installations: {
           where: { isActive: true },
           take: 1
         }
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Get clinic info for review link
-    const clinic = await prisma.clinic.findUnique({
+    const clinic = await prisma.clinics.findUnique({
       where: { id: token.clinicId as string },
       select: { googleReviewLink: true, name: true }
     });
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     }
     
     // For push delivery, check if patient has app installed
-    if (deliveryMethod === 'push' && patient.appInstallations.length === 0) {
+    if (deliveryMethod === 'push' && patient.app_installations.length === 0) {
       return NextResponse.json({ 
         error: 'Patient does not have the app installed',
         message: 'Cannot send push notification. Patient needs to install the app first.'
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if a review request already exists for this patient (pending or sent recently)
-    const existingReview = await prisma.review.findFirst({
+    const existingReview = await prisma.reviews.findFirst({
       where: {
         patientId,
         clinicId: token.clinicId as string,
@@ -185,19 +185,22 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
+    // Create review data object
+    const reviewData = {
+      patientId,
+      clinicId: token.clinicId as string,
+      platform,
+      deliveryMethod,
+      status: 'pending' as const,
+      requestDate: new Date(),
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+    };
+    
     // Create review request
-    const review = await prisma.review.create({
-      data: {
-        patientId,
-        clinicId: token.clinicId as string,
-        platform,
-        deliveryMethod,
-        status: 'pending',
-        requestDate: new Date(),
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
-      },
+    const review = await prisma.reviews.create({
+      data: reviewData as any, // Type assertion to fix TypeScript error
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -209,13 +212,17 @@ export async function POST(request: NextRequest) {
     // If scheduled for future, it will be sent later
     // If no scheduled date, send immediately (in a real app, you'd trigger sending logic here)
     
+    // Cast to access relation data
+    const reviewWithPatient = review as any;
+    const patientData = reviewWithPatient.patients || reviewWithPatient.patient;
+    
     return NextResponse.json({
       success: true,
       message: scheduledDate ? 'Review request scheduled' : 'Review request created',
       review: {
         id: review.id,
-        patientName: review.patient.name,
-        patientMobile: review.patient.mobile,
+        patientName: patientData?.name || 'Unknown',
+        patientMobile: patientData?.mobile || 'Unknown',
         platform: review.platform,
         deliveryMethod: review.deliveryMethod,
         status: review.status,

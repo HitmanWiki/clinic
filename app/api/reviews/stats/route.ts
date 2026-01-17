@@ -21,26 +21,26 @@ export async function GET(request: NextRequest) {
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
     // Get all reviews for the clinic
-    const reviews = await prisma.review.findMany({
+    const reviews = await prisma.reviews.findMany({
       where: { clinicId },
     });
 
-    // Calculate stats
+    // Calculate stats with proper type annotations
     const totalRequests = reviews.length;
-    const receivedReviews = reviews.filter(r => r.status === 'received').length;
+    const receivedReviews = reviews.filter((r: any) => r.status === 'received').length;
     
-    const receivedWithRating = reviews.filter(r => r.rating);
+    const receivedWithRating = reviews.filter((r: any) => r.rating);
     const averageRating = receivedWithRating.length > 0 
-      ? receivedWithRating.reduce((sum, r) => sum + (r.rating || 0), 0) / receivedWithRating.length
+      ? receivedWithRating.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / receivedWithRating.length
       : 0;
 
     const responseRate = totalRequests > 0 ? (receivedReviews / totalRequests) * 100 : 0;
 
-    const thisMonth = reviews.filter(r => 
+    const thisMonth = reviews.filter((r: any) => 
       r.requestDate >= startOfThisMonth
     ).length;
 
-    const lastMonth = reviews.filter(r => 
+    const lastMonth = reviews.filter((r: any) => 
       r.requestDate >= startOfLastMonth && r.requestDate <= endOfLastMonth
     ).length;
 

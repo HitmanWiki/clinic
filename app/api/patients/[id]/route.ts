@@ -6,10 +6,10 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     console.log(`🔄 GET /api/patients/${id} called`);
     
     if (!id || id === '[id]' || id === 'undefined') {
@@ -35,7 +35,7 @@ export async function GET(
     console.log(`✅ Session clinicId: ${session.user.clinicId}`);
     
     // Get patient from database
-    const patient = await prisma.patient.findUnique({
+    const patient = await prisma.patients.findUnique({
       where: { 
         id: id,
         clinicId: session.user.clinicId 
@@ -46,8 +46,8 @@ export async function GET(
             prescriptions: true, 
             notifications: true,
             reviews: true,
-            appInstallations: true,
-            medicineReminders: true
+            app_installations: true,
+            medicine_reminders: true
           }
         },
         // Include recent notifications
@@ -63,7 +63,7 @@ export async function GET(
           }
         },
         // Include app installation info
-        appInstallations: {
+        app_installations: {
           where: { isActive: true },
           take: 1,
           select: {
@@ -108,9 +108,9 @@ export async function GET(
     }
     
     // Get app installation status
-    const hasAppInstalled = patient.appInstallations.length > 0;
-    const appInstalledAt = hasAppInstalled ? patient.appInstallations[0].installedAt : null;
-    const deviceType = hasAppInstalled ? patient.appInstallations[0].deviceType : null;
+    const hasAppInstalled = patient.app_installations.length > 0;
+    const appInstalledAt = hasAppInstalled ? patient.app_installations[0].installedAt : null;
+    const deviceType = hasAppInstalled ? patient.app_installations[0].deviceType : null;
     
     // Get notification status
     const pendingNotifications = patient.notifications.filter(
@@ -137,14 +137,14 @@ export async function GET(
         prescriptionCount: patient._count.prescriptions,
         notificationCount: patient._count.notifications,
         reviewCount: patient._count.reviews,
-        appInstallationCount: patient._count.appInstallations,
-        medicineReminderCount: patient._count.medicineReminders,
+        appInstallationCount: patient._count.app_installations,
+        medicineReminderCount: patient._count.medicine_reminders,
         
         // App installation info
         hasAppInstalled,
         appInstalledAt: appInstalledAt?.toISOString(),
         deviceType,
-        appVersion: hasAppInstalled ? patient.appInstallations[0].appVersion : null,
+        appVersion: hasAppInstalled ? patient.app_installations[0].appVersion : null,
         
         // Notification info
         hasPendingNotifications,
@@ -176,10 +176,10 @@ export async function GET(
 // Enhanced PUT method for better validation and testing
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     console.log(`📝 PUT /api/patients/${id} called`);
     
     const session = await getServerSession(authOptions);
@@ -195,7 +195,7 @@ export async function PUT(
     const clinicId = session.user.clinicId;
     
     // Verify patient exists and belongs to clinic
-    const existingPatient = await prisma.patient.findUnique({
+    const existingPatient = await prisma.patients.findUnique({
       where: { 
         id: id,
         clinicId: clinicId
@@ -231,7 +231,7 @@ export async function PUT(
         errors.push('Mobile must be 10 digits');
       } else {
         // Check if mobile is already taken by another patient in same clinic
-        const existingWithMobile = await prisma.patient.findFirst({
+        const existingWithMobile = await prisma.patients.findFirst({
           where: {
             clinicId: clinicId,
             mobile: body.mobile,
@@ -285,14 +285,14 @@ export async function PUT(
     console.log('📝 Final update data:', updateData);
     
     // Update patient
-    const updatedPatient = await prisma.patient.update({
+    const updatedPatient = await prisma.patients.update({
       where: {
         id: id,
         clinicId: clinicId
       },
       data: updateData,
       include: {
-        appInstallations: {
+        app_installations: {
           where: { isActive: true },
           take: 1
         }
@@ -324,7 +324,7 @@ export async function PUT(
         notes: updatedPatient.notes,
         visitDate: updatedPatient.visitDate.toISOString(),
         optOut: updatedPatient.optOut,
-        hasAppInstalled: updatedPatient.appInstallations.length > 0,
+        hasAppInstalled: updatedPatient.app_installations.length > 0,
         // For testing initials
         initials: getInitials(updatedPatient.name),
         initialsExplanation: getInitialsExplanation(updatedPatient.name),
@@ -372,10 +372,10 @@ function getInitialsExplanation(name: string): string {
 // Optional: Add PATCH method for partial updates (for testing)
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     console.log(`🔄 PATCH /api/patients/${id} called`);
     
     const session = await getServerSession(authOptions);
@@ -396,13 +396,13 @@ export async function PATCH(
       console.log('🧪 Testing invalid date scenario');
       
       // Create a patient with potentially invalid visitDate
-      const testPatient = await prisma.patient.create({
+      const testPatient = await prisma.patients.create({
         data: {
           clinicId: clinicId,
           name: 'Test Invalid Date',
           mobile: `99999${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
           visitDate: new Date('invalid-date-string'), // This will throw
-        }
+        } as any // Type assertion to fix TypeScript error
       });
       
       return NextResponse.json({
@@ -441,10 +441,10 @@ export async function PATCH(
 // Optional: Add DELETE method
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     console.log(`🗑️ DELETE /api/patients/${id} called`);
     
     const session = await getServerSession(authOptions);
@@ -458,7 +458,7 @@ export async function DELETE(
     }
     
     // Delete patient and all related data
-    await prisma.patient.delete({
+    await prisma.patients.delete({
       where: {
         id: id,
         clinicId: session.user.clinicId

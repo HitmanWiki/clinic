@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const prescriptions = await prisma.prescription.findMany({
+    const prescriptions = await prisma.prescriptions.findMany({
       where: { clinicId },
       include: {
-        patient: {
+        patients: {
           select: {
             id: true,
             name: true,
@@ -29,11 +29,11 @@ export async function GET(request: NextRequest) {
     });
 
     // Format response for the prescriptions page
-    const formattedPrescriptions = prescriptions.map(prescription => {
+    const formattedPrescriptions = prescriptions.map(prescriptions => {
       // Parse medicines to count them
       let medicinesCount = 0;
       try {
-        const medicines = JSON.parse(prescription.medicines as string);
+        const medicines = JSON.parse(prescriptions.medicines as string);
         medicinesCount = Array.isArray(medicines) ? medicines.length : 0;
       } catch (error) {
         medicinesCount = 0;
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
       // Determine status based on nextVisitDate and current date
       const today = new Date();
-      const nextVisitDate = prescription.nextVisitDate ? new Date(prescription.nextVisitDate) : null;
+      const nextVisitDate = prescriptions.nextVisitDate ? new Date(prescriptions.nextVisitDate) : null;
       
       let status: "active" | "completed" | "cancelled" = "active";
       if (nextVisitDate && nextVisitDate < today) {
@@ -49,14 +49,14 @@ export async function GET(request: NextRequest) {
       }
 
       return {
-        id: prescription.id,
-        patientId: prescription.patientId,
-        patientName: prescription.patient.name,
-        patientMobile: prescription.patient.mobile,
-        date: prescription.createdAt.toISOString().split('T')[0],
-        diagnosis: prescription.diagnosis || '',
+        id: prescriptions.id,
+        patientId: prescriptions.patientId,
+        patientName: prescriptions.patients.name,
+        patientMobile: prescriptions.patients.mobile,
+        date: prescriptions.createdAt.toISOString().split('T')[0],
+        diagnosis: prescriptions.diagnosis || '',
         medicinesCount,
-        nextVisitDate: prescription.nextVisitDate?.toISOString().split('T')[0],
+        nextVisitDate: prescriptions.nextVisitDate?.toISOString().split('T')[0],
         status,
       };
     });

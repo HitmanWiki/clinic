@@ -22,10 +22,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get patient with all related data (same as before)
-    const patient = await prisma.patient.findUnique({
+    const patient = await prisma.patients.findUnique({
       where: { id: patientId },
       include: {
-        clinic: {
+        clinics: {
           select: {
             id: true,
             name: true,
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
             enablePushReminders: true,
           },
         },
-        medicineReminders: {
+        medicine_reminders: {
           where: { status: 'active' },
           take: 10,
           orderBy: { startDate: 'desc' },
@@ -95,16 +95,16 @@ export async function GET(request: NextRequest) {
 
     // Calculate statistics
     const stats = {
-      totalPrescriptions: await prisma.prescription.count({
+      totalPrescriptions: await prisma.prescriptions.count({
         where: { patientId: patient.id },
       }),
-      activeReminders: await prisma.medicineReminder.count({
+      activeReminders: await prisma.medicine_reminders.count({
         where: { patientId: patient.id, status: 'active' },
       }),
-      completedReminders: await prisma.medicineReminder.count({
+      completedReminders: await prisma.medicine_reminders.count({
         where: { patientId: patient.id, status: 'completed' },
       }),
-      pendingReviews: await prisma.review.count({
+      pendingReviews: await prisma.reviews.count({
         where: { patientId: patient.id, status: 'pending' },
       }),
     };
@@ -119,9 +119,9 @@ export async function GET(request: NextRequest) {
       lastVisit: patient.visitDate,
       lastAppLogin: patient.lastAppLogin,
       hasAppInstalled: patient.hasAppInstalled,
-      clinic: patient.clinic,
+      clinic: patient.clinics,
       recentPrescriptions: patient.prescriptions,
-      activeReminders: patient.medicineReminders,
+      activeReminders: patient.medicine_reminders,
       recentReviews: patient.reviews,
       stats,
     };

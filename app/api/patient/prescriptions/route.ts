@@ -30,10 +30,10 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     // Get prescriptions for this patient
-    const prescriptions = await prisma.prescription.findMany({
+    const prescriptions = await prisma.prescriptions.findMany({
       where: { patientId: patientId },
       include: {
-        medicineReminders: {
+        medicine_reminders: {
           select: {
             id: true,
             medicineName: true,
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
             status: true,
           },
         },
-        clinic: {
+        clinics: {
           select: {
             name: true,
             doctorName: true,
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       skip: skip,
     });
 
-    const total = await prisma.prescription.count({
+    const total = await prisma.prescriptions.count({
       where: { patientId: patientId },
     });
 

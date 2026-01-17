@@ -135,12 +135,12 @@ export const authOptions: AuthOptions = {
           
           // SECURITY: Using Prisma with parameterized queries - SQL Injection protected
           // Prisma automatically parameterizes queries, preventing SQL injection
-          const user = await prisma.user.findUnique({
+          const user = await prisma.users.findUnique({
             where: { 
               phone: sanitizedPhone // Using sanitized input
             },
             include: { 
-              clinic: {
+              clinics: {
                 include: {
                   patients: {
                     select: { 
@@ -174,10 +174,10 @@ export const authOptions: AuthOptions = {
           console.log("✅ Password verified for user:", user.id);
           
           // Calculate app users count
-          const appUsersCount = user.clinic.patients.length;
+          const appUsersCount = user.clinics.patients.length;
           
           // Get clinic data with safe defaults
-          const clinicData = user.clinic;
+          const clinicData = user.clinics;
           const pushNotificationBalance = clinicData.pushNotificationBalance ?? 100;
           const pushDeliveryRate = clinicData.pushDeliveryRate ?? 0.0;
           
@@ -187,13 +187,13 @@ export const authOptions: AuthOptions = {
             phone: user.phone,
             email: user.email,
             role: user.role || "admin",
-            name: user.clinic.doctorName || "Clinic User",
+            name: user.clinics.doctorName || "Clinic User",
             clinicId: user.clinicId,
             pushNotificationBalance,
             hasAppUsers: appUsersCount,
             pushDeliveryRate,
-            subscriptionPlan: user.clinic.subscriptionPlan,
-            subscriptionStatus: user.clinic.subscriptionStatus,
+            subscriptionPlan: user.clinics.subscriptionPlan,
+            subscriptionStatus: user.clinics.subscriptionStatus,
           };
           
         } catch (error) {

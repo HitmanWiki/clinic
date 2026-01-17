@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const prescriptions = await prisma.prescription.findMany({
+    const prescriptions = await prisma.prescriptions.findMany({
       where: { clinicId },
       include: {
-        patient: {
+        patients: {
           select: {
             id: true,
             name: true,
@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
       return {
         id: prescription.id,
         patientId: prescription.patientId,
-        patientName: prescription.patient.name,
-        patientMobile: prescription.patient.mobile,
+        patientName: prescription.patients.name,
+        patientMobile: prescription.patients.mobile,
         date: prescription.createdAt.toISOString().split('T')[0],
         diagnosis: prescription.diagnosis || '',
         medicinesCount,

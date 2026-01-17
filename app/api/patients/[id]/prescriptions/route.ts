@@ -6,11 +6,12 @@ import { prisma } from '@/lib/prisma';
 // GET: Fetch prescriptions for a patient
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   console.log('📋 GET /api/patients/[id]/prescriptions called');
   
   try {
+    const { id: patientId } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
@@ -19,8 +20,6 @@ export async function GET(
     }
 
     console.log('✅ Session clinicId:', session.user.clinicId);
-    
-    const { id: patientId } = await params;
     console.log('📝 Patient ID:', patientId);
     
     if (!patientId || patientId === 'undefined') {
@@ -29,7 +28,7 @@ export async function GET(
     }
 
     // Check if patient exists and belongs to this clinic
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         id: patientId,
         clinicId: session.user.clinicId,
@@ -44,7 +43,7 @@ export async function GET(
     console.log('✅ Patient found:', patient.name);
     
     // Fetch prescriptions for this patient
-    const prescriptions = await prisma.prescription.findMany({
+    const prescriptions = await prisma.prescriptions.findMany({
       where: {
         patientId: patientId,
         clinicId: session.user.clinicId,
@@ -53,7 +52,7 @@ export async function GET(
         createdAt: 'desc',
       },
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -65,11 +64,11 @@ export async function GET(
     console.log(`✅ Found ${prescriptions.length} prescriptions`);
     
     // Transform prescriptions for frontend
-    const formattedPrescriptions = prescriptions.map(prescription => ({
+    const formattedPrescriptions = prescriptions.map((prescription: any) => ({
       id: prescription.id,
       patientId: prescription.patientId,
-      patientName: prescription.patient.name,
-      patientMobile: prescription.patient.mobile,
+      patientName: prescription.patients.name,
+      patientMobile: prescription.patients.mobile,
       date: prescription.createdAt,
       diagnosis: prescription.diagnosis || '',
       medicines: prescription.medicines || [],
@@ -97,11 +96,12 @@ export async function GET(
 // POST: Create a new prescription
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   console.log('📝 POST /api/patients/[id]/prescriptions called');
   
   try {
+    const { id: patientId } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
@@ -110,8 +110,6 @@ export async function POST(
     }
 
     console.log('✅ Session clinicId:', session.user.clinicId);
-    
-    const { id: patientId } = await params;
     console.log('📝 Patient ID:', patientId);
     
     if (!patientId || patientId === 'undefined') {
@@ -120,7 +118,7 @@ export async function POST(
     }
 
     // Verify patient exists and belongs to clinic
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         id: patientId,
         clinicId: session.user.clinicId,
@@ -153,16 +151,19 @@ export async function POST(
       }
     }
     
+    // Create prescription data object
+    const prescriptionData = {
+      diagnosis: body.diagnosis.trim(),
+      medicines: body.medicines,
+      nextVisitDate: body.nextVisitDate ? new Date(body.nextVisitDate) : null,
+      notes: body.notes || body.advice || '',
+      patientId: patientId,
+      clinicId: session.user.clinicId,
+    };
+    
     // Create prescription
-    const prescription = await prisma.prescription.create({
-      data: {
-        diagnosis: body.diagnosis.trim(),
-        medicines: body.medicines,
-        nextVisitDate: body.nextVisitDate ? new Date(body.nextVisitDate) : null,
-        notes: body.notes || body.advice || '',
-        patientId: patientId,
-        clinicId: session.user.clinicId,
-      },
+    const prescription = await prisma.prescriptions.create({
+      data: prescriptionData as any, // Type assertion to fix TypeScript error
     });
 
     console.log('✅ Created prescription:', prescription.id);

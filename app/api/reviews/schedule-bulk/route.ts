@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Get clinic info
-    const clinic = await prisma.clinic.findUnique({
+    const clinic = await prisma.clinics.findUnique({
       where: { id: session.user.clinicId },
       select: { googleReviewLink: true, name: true }
     });
@@ -30,11 +30,11 @@ export async function POST(request: NextRequest) {
     }
     
     // Get patients that belong to this clinic and have app installed
-    const patients = await prisma.patient.findMany({
+    const patients = await prisma.patients.findMany({
       where: {
         id: { in: patientIds },
         clinicId: session.user.clinicId,
-        appInstallations: {
+        app_installations: {
           some: {
             isActive: true
           }
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Check for existing recent review requests
-    const recentReviews = await prisma.review.findMany({
+    const recentReviews = await prisma.reviews.findMany({
       where: {
         patientId: { in: patients.map(p => p.id) },
         clinicId: session.user.clinicId,
@@ -82,26 +82,28 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
-    // Create review requests
+    // Create review data objects
     const reviewRequests = await Promise.all(
-      eligiblePatients.map(patient =>
-        prisma.review.create({
-          data: {
-            patientId: patient.id,
-            clinicId: session.user.clinicId,
-            platform,
-            deliveryMethod,
-            status: 'pending',
-            requestDate: new Date(),
-          },
+      eligiblePatients.map(patient => {
+        const reviewData = {
+          patientId: patient.id,
+          clinicId: session.user.clinicId,
+          platform,
+          deliveryMethod,
+          status: 'pending' as const,
+          requestDate: new Date(),
+        };
+        
+        return prisma.reviews.create({
+          data: reviewData as any, // Type assertion to fix TypeScript error
           select: {
             id: true,
             patientId: true,
             status: true,
             requestDate: true,
           }
-        })
-      )
+        });
+      })
     );
     
     return NextResponse.json({

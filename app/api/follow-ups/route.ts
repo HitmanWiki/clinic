@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     if (!finalClinicId && process.env.NODE_ENV === 'development') {
       console.log("⚠️ Development mode: Using default clinicId");
       // Check if there's any clinic in the database
-      const firstClinic = await prisma.clinic.findFirst();
+      const firstClinic = await prisma.clinics.findFirst();
       if (firstClinic) {
         finalClinicId = firstClinic.id;
         console.log("🔐 Using clinicId from first clinic:", finalClinicId);
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     console.log('✅ Using clinicId:', finalClinicId);
     
     // Get scheduled notifications (these are your "follow-ups")
-    const notifications = await prisma.notification.findMany({
+    const notifications = await prisma.notifications.findMany({
       where: {
         clinicId: finalClinicId,
         status: 'scheduled', // Only get scheduled notifications
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         scheduledDate: 'asc',
       },
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -71,11 +71,11 @@ export async function GET(request: NextRequest) {
     console.log(`✅ Found ${notifications.length} scheduled notifications in database`);
 
     // Transform data - convert notifications to follow-up format for frontend
-    const formattedFollowUps = notifications.map((notification) => ({
+    const formattedFollowUps = notifications.map((notification: any) => ({
       id: notification.id,
       patientId: notification.patientId,
-      patientName: notification.patient.name,
-      patientMobile: notification.patient.mobile,
+      patientName: notification.patients.name,
+      patientMobile: notification.patients.mobile,
       type: notification.type, // Use notification type (appointment_reminder, medicine_reminder, etc.)
       scheduledDate: notification.scheduledDate.toISOString().split('T')[0],
       scheduledTime: notification.scheduledDate.toISOString().split('T')[1].substring(0, 5),
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       channel: notification.deliveryMethod, // push (since you only use push notifications)
       message: notification.message || '',
       // Additional notification-specific fields
-      fcmToken: notification.patient.fcmToken,
+      fcmToken: notification.patients.fcmToken,
       notificationId: notification.id,
       category: notification.category,
       priority: notification.priority,
@@ -137,13 +137,13 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if patient belongs to this clinic
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         id: patientId,
         clinicId: clinicId,
       },
       include: {
-        appInstallations: {
+        app_installations: {
           where: { isActive: true },
           take: 1
         }
@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if patient has app installed (for push notifications)
-    if (patient.appInstallations.length === 0) {
+    if (patient.app_installations.length === 0) {
       return NextResponse.json({ 
         error: 'Patient does not have the app installed',
         message: 'Cannot schedule notification. Patient needs to install the app first.'
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Check clinic's push notification balance
-    const clinic = await prisma.clinic.findUnique({
+    const clinic = await prisma.clinics.findUnique({
       where: { id: clinicId },
       select: { pushNotificationBalance: true }
     });
@@ -175,21 +175,24 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
     
+    // Create notification data object
+    const notificationData = {
+      patientId,
+      clinicId,
+      type,
+      category,
+      message: message.trim(),
+      scheduledDate: new Date(scheduledDate),
+      status: 'scheduled' as const,
+      priority: 'normal' as const,
+      deliveryMethod: 'push' as const, // Always push since you're only using app notifications
+    };
+    
     // Create notification (this is your "follow-up")
-    const notification = await prisma.notification.create({
-      data: {
-        patientId,
-        clinicId,
-        type,
-        category,
-        message: message.trim(),
-        scheduledDate: new Date(scheduledDate),
-        status: 'scheduled',
-        priority: 'normal',
-        deliveryMethod: 'push', // Always push since you're only using app notifications
-      },
+    const notification = await prisma.notifications.create({
+      data: notificationData as any, // Type assertion to fix TypeScript error
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -199,7 +202,7 @@ export async function POST(request: NextRequest) {
     });
     
     // Decrement clinic's notification balance
-    await prisma.clinic.update({
+    await prisma.clinics.update({
       where: { id: clinicId },
       data: {
         pushNotificationBalance: {
@@ -208,7 +211,11 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    console.log(`✅ Notification scheduled for patient ${notification.patient.name} at ${scheduledDate}`);
+    // Cast to access relation data
+    const notificationWithPatient = notification as any;
+    const patientData = notificationWithPatient.patients || notificationWithPatient.patient;
+    
+    console.log(`✅ Notification scheduled for patient ${patientData?.name} at ${scheduledDate}`);
     
     return NextResponse.json({
       success: true,
@@ -216,8 +223,8 @@ export async function POST(request: NextRequest) {
       followUp: {
         id: notification.id,
         patientId: notification.patientId,
-        patientName: notification.patient.name,
-        patientMobile: notification.patient.mobile,
+        patientName: patientData?.name || 'Unknown',
+        patientMobile: patientData?.mobile || 'Unknown',
         type: notification.type,
         scheduledDate: notification.scheduledDate.toISOString(),
         status: notification.status,
@@ -254,7 +261,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     // Check if notification exists and belongs to this clinic
-    const notification = await prisma.notification.findFirst({
+    const notification = await prisma.notifications.findFirst({
       where: {
         id: notificationId,
         clinicId: clinicId,
@@ -274,14 +281,14 @@ export async function DELETE(request: NextRequest) {
     }
     
     // Delete the notification
-    await prisma.notification.delete({
+    await prisma.notifications.delete({
       where: {
         id: notificationId,
       }
     });
     
     // Refund the notification balance
-    await prisma.clinic.update({
+    await prisma.clinics.update({
       where: { id: clinicId },
       data: {
         pushNotificationBalance: {

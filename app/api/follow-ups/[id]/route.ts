@@ -6,16 +6,16 @@ import { prisma } from '@/lib/prisma';
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
     const body = await request.json();
     
     // Validate allowed fields to update
@@ -50,7 +50,7 @@ export async function PUT(
     }
     
     // Check if notification exists and belongs to this clinic
-    const existingNotification = await prisma.notification.findFirst({
+    const existingNotification = await prisma.notifications.findFirst({
       where: {
         id,
         clinicId: session.user.clinicId,
@@ -62,13 +62,14 @@ export async function PUT(
     }
     
     // Update notification (this replaces the follow-up update)
-    const notification = await prisma.notification.update({
+    const notification = await prisma.notifications.update({
       where: {
         id,
       },
       data: updateData,
+      // Use snake_case for relations
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -77,13 +78,17 @@ export async function PUT(
       }
     });
 
+    // Access the patient data correctly
+    const notificationAny = notification as any;
+    const patient = notificationAny.patients || notificationAny.patient;
+    
     return NextResponse.json({ 
       success: true, 
       notification: {
         id: notification.id,
         patientId: notification.patientId,
-        patientName: notification.patient.name,
-        patientMobile: notification.patient.mobile,
+        patientName: patient?.name || 'Unknown',
+        patientMobile: patient?.mobile || 'Unknown',
         type: notification.type,
         message: notification.message,
         scheduledDate: notification.scheduledDate.toISOString(),
@@ -106,19 +111,18 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { id } = await params;
     
     // Check if notification exists and belongs to this clinic
-    const existingNotification = await prisma.notification.findFirst({
+    const existingNotification = await prisma.notifications.findFirst({
       where: {
         id,
         clinicId: session.user.clinicId,
@@ -138,14 +142,14 @@ export async function DELETE(
     }
     
     // Delete the notification
-    await prisma.notification.delete({
+    await prisma.notifications.delete({
       where: {
         id,
       }
     });
     
     // Refund the notification balance
-    await prisma.clinic.update({
+    await prisma.clinics.update({
       where: { id: session.user.clinicId },
       data: {
         pushNotificationBalance: {
@@ -171,32 +175,33 @@ export async function DELETE(
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { id } = await params;
     
     // Get notification (replacing follow-up)
-    const notification = await prisma.notification.findFirst({
+    const notification = await prisma.notifications.findFirst({
       where: {
         id,
         clinicId: session.user.clinicId,
       },
+      // Use snake_case for all relations
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
             fcmToken: true,
           }
         },
-        medicineReminder: {
+        // Use snake_case based on the error message
+        medicine_reminders: {
           select: {
             medicineName: true,
             dosage: true,
@@ -210,14 +215,19 @@ export async function GET(
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
 
+    // Access the relations correctly with snake_case
+    const notificationAny = notification as any;
+    const patient = notificationAny.patients || notificationAny.patient;
+    const medicineReminder = notificationAny.medicine_reminders || notificationAny.medicineReminder;
+
     return NextResponse.json({ 
       success: true, 
       notification: {
         id: notification.id,
         patientId: notification.patientId,
-        patientName: notification.patient.name,
-        patientMobile: notification.patient.mobile,
-        fcmToken: notification.patient.fcmToken,
+        patientName: patient?.name || 'Unknown',
+        patientMobile: patient?.mobile || 'Unknown',
+        fcmToken: patient?.fcmToken || null,
         type: notification.type,
         category: notification.category,
         message: notification.message,
@@ -230,7 +240,7 @@ export async function GET(
         readAt: notification.readAt?.toISOString(),
         failureReason: notification.failureReason,
         createdAt: notification.createdAt.toISOString(),
-        medicineReminder: notification.medicineReminder,
+        medicineReminder: medicineReminder || null,
       }
     });
     

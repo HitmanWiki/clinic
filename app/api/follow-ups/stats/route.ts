@@ -31,7 +31,7 @@ export async function GET() {
       totalNotifications
     ] = await Promise.all([
       // Notifications scheduled for today
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'scheduled',
@@ -43,7 +43,7 @@ export async function GET() {
       }),
 
       // Notifications with status 'scheduled' (pending)
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'scheduled',
@@ -51,7 +51,7 @@ export async function GET() {
       }),
 
       // Notifications with status 'sent'
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'sent',
@@ -59,7 +59,7 @@ export async function GET() {
       }),
 
       // Notifications with status 'delivered'
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'delivered',
@@ -67,7 +67,7 @@ export async function GET() {
       }),
 
       // Notifications with status 'read'
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'read',
@@ -75,7 +75,7 @@ export async function GET() {
       }),
 
       // Notifications with status 'failed'
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'failed',
@@ -83,7 +83,7 @@ export async function GET() {
       }),
 
       // Upcoming notifications (next 7 days)
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
           status: 'scheduled',
@@ -95,7 +95,7 @@ export async function GET() {
       }),
 
       // Total notifications
-      prisma.notification.count({
+      prisma.notifications.count({
         where: {
           clinicId,
         },
@@ -117,7 +117,7 @@ export async function GET() {
       : 0;
 
     // Get clinic notification balance
-    const clinic = await prisma.clinic.findUnique({
+    const clinic = await prisma.clinics.findUnique({
       where: { id: clinicId },
       select: { pushNotificationBalance: true }
     });

@@ -1,7 +1,7 @@
 // app/dashboard/reports/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format, subDays } from "date-fns";
@@ -155,7 +155,18 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, 
   );
 };
 
-export default function ReportsPage() {
+// Loading component
+function ReportsLoading() {
+  return (
+    <div className="flex justify-center items-center min-h-[400px]">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <span className="ml-3 text-gray-600">Loading report data...</span>
+    </div>
+  );
+}
+
+// Main content component that uses search params
+function ReportsContent() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -271,12 +282,7 @@ export default function ReportsPage() {
   
   // Render loading state
   if (status === "loading" || loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-        <span className="ml-3 text-gray-600">Loading report data...</span>
-      </div>
-    );
+    return <ReportsLoading />;
   }
   
   // Render based on report type
@@ -1166,5 +1172,14 @@ export default function ReportsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Main page component with Suspense boundary
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={<ReportsLoading />}>
+      <ReportsContent />
+    </Suspense>
   );
 }

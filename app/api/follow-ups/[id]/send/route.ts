@@ -5,16 +5,15 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const { id } = await params;
     
     // Get notification data from request body
     const body = await request.json();
@@ -36,7 +35,7 @@ export async function POST(
     }
     
     // Check if patient belongs to this clinic
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         id: patientId,
         clinicId: session.user.clinicId,
@@ -56,26 +55,33 @@ export async function POST(
       }, { status: 400 });
     }
     
-    // Create notification
-    const notification = await prisma.notification.create({
-      data: {
-        patientId,
-        clinicId: session.user.clinicId,
-        type,
-        message: message.trim(),
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : new Date(),
-        deliveryMethod,
-        status: finalStatus,
-        // If sending immediately, mark as sent
-        ...(finalStatus === 'sent' ? { sentAt: new Date() } : {})
-      },
-      include: {
-        patient: {
-          select: {
-            name: true,
-            mobile: true,
-          }
-        }
+    // Create notification data object
+    const notificationData: any = {
+      patientId,
+      clinicId: session.user.clinicId,
+      type,
+      message: message.trim(),
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : new Date(),
+      deliveryMethod,
+      status: finalStatus,
+    };
+    
+    // If sending immediately, mark as sent
+    if (finalStatus === 'sent') {
+      notificationData.sentAt = new Date();
+    }
+    
+    // Create notification (without include for now)
+    const notification = await prisma.notifications.create({
+      data: notificationData,
+    });
+    
+    // Fetch patient details separately
+    const patientDetails = await prisma.patients.findUnique({
+      where: { id: patientId },
+      select: {
+        name: true,
+        mobile: true,
       }
     });
     
@@ -86,14 +92,14 @@ export async function POST(
       // 2. Twilio/TextLocal for SMS
       // 3. Email service for email notifications
       
-      console.log(`📤 Sending ${deliveryMethod} notification to ${notification.patient.name}: ${message}`);
+      console.log(`📤 Sending ${deliveryMethod} notification to ${patientDetails?.name || 'patient'}: ${message}`);
       
       // Here you would add actual notification sending logic
       // For now, we'll simulate sending
       
       // Update clinic's notification balance if using push notifications
       if (deliveryMethod === 'push') {
-        await prisma.clinic.update({
+        await prisma.clinics.update({
           where: { id: session.user.clinicId },
           data: {
             pushNotificationBalance: {
@@ -109,7 +115,8 @@ export async function POST(
       message: finalStatus === 'sent' ? 'Notification sent successfully' : 'Notification scheduled successfully',
       notification: {
         id: notification.id,
-        patientName: notification.patient.name,
+        patientName: patientDetails?.name || 'Unknown',
+        patientMobile: patientDetails?.mobile || 'Unknown',
         type: notification.type,
         message: notification.message,
         scheduledDate: notification.scheduledDate,
@@ -130,16 +137,16 @@ export async function POST(
 // Optional: Add a PUT endpoint to update notification status (mark as sent/delivered/read)
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
     const body = await request.json();
     const { status, failureReason } = body;
     
@@ -163,7 +170,7 @@ export async function PUT(
       updateData.failureReason = failureReason;
     }
     
-    const notification = await prisma.notification.update({
+    const notification = await prisma.notifications.update({
       where: {
         id,
         clinicId: session.user.clinicId,
@@ -192,19 +199,18 @@ export async function PUT(
 // Optional: Add DELETE endpoint to cancel scheduled notifications
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
-    
     // Delete notification
-    await prisma.notification.delete({
+    await prisma.notifications.delete({
       where: {
         id,
         clinicId: session.user.clinicId,

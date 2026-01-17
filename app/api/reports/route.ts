@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch notifications data
     const fetchNotifications = async (): Promise<NotificationStats> => {
-      const notifications = await prisma.notification.findMany({
+      const notifications = await prisma.notifications.findMany({
         where: {
           clinicId,
           scheduledDate: {
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch patients data
     const fetchPatients = async (): Promise<PatientStats> => {
-      const patients = await prisma.patient.findMany({
+      const patients = await prisma.patients.findMany({
         where: {
           clinicId,
           createdAt: {
@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      const totalPatientsAllTime = await prisma.patient.count({
+      const totalPatientsAllTime = await prisma.patients.count({
         where: { clinicId },
       });
 
@@ -285,7 +285,7 @@ export async function GET(request: NextRequest) {
       }));
 
       // Retention rate (simplified)
-      const patientsWithMultipleVisits = await prisma.patient.findMany({
+      const patientsWithMultipleVisits = await prisma.patients.findMany({
         where: {
           clinicId,
           visitDate: {
@@ -326,7 +326,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch prescriptions data
     const fetchPrescriptions = async (): Promise<PrescriptionStats> => {
-      const prescriptions = await prisma.prescription.findMany({
+      const prescriptions = await prisma.prescriptions.findMany({
         where: {
           clinicId,
           createdAt: {
@@ -419,7 +419,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch reviews data
     const fetchReviews = async (): Promise<ReviewStats> => {
-      const reviews = await prisma.review.findMany({
+      const reviews = await prisma.reviews.findMany({
         where: {
           clinicId,
           createdAt: {
@@ -504,7 +504,7 @@ export async function GET(request: NextRequest) {
     // Fetch analytics data
     const fetchAnalytics = async (): Promise<AnalyticsStats> => {
       // Peak hours based on appointments
-      const patients = await prisma.patient.findMany({
+      const patients = await prisma.patients.findMany({
         where: {
           clinicId,
           visitDate: {
@@ -550,7 +550,7 @@ export async function GET(request: NextRequest) {
       const previousStart = subDays(start, daysDiff + 1);
       const previousEnd = subDays(start, 1);
 
-      const previousPeriodPatients = await prisma.patient.count({
+      const previousPeriodPatients = await prisma.patients.count({
         where: {
           clinicId,
           createdAt: {
@@ -560,7 +560,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      const currentPeriodPatients = await prisma.patient.count({
+      const currentPeriodPatients = await prisma.patients.count({
         where: {
           clinicId,
           createdAt: {
@@ -579,7 +579,7 @@ export async function GET(request: NextRequest) {
 
       // Patient engagement
       const thirtyDaysAgo = subDays(new Date(), 30);
-      const activePatients = await prisma.patient.count({
+      const activePatients = await prisma.patients.count({
         where: {
           clinicId,
           hasAppInstalled: true,
@@ -589,7 +589,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      const totalPatientsWithApp = await prisma.patient.count({
+      const totalPatientsWithApp = await prisma.patients.count({
         where: {
           clinicId,
           hasAppInstalled: true,

@@ -22,10 +22,10 @@ export async function GET(
 
     // Fetch prescription with patient and clinic data
     console.log('📋 Querying database...');
-    const prescription = await prisma.prescription.findUnique({
+    const prescription = await prisma.prescriptions.findUnique({
       where: { id: prescriptionId },
       include: {
-        patient: {
+        patients: {
           select: {
             id: true,
             name: true,
@@ -34,7 +34,7 @@ export async function GET(
             gender: true,
           },
         },
-        clinic: {
+        clinics: {
           select: {
             id: true,
             name: true,
@@ -91,23 +91,23 @@ export async function GET(
         instructions: med?.instructions || '',
         timing: med?.timing || med?.frequency || '',
       })) : [],
-      patientName: prescription.patient?.name || 'Unknown Patient',
-      patientMobile: prescription.patient?.mobile || '',
-      patientAge: prescription.patient?.age,
-      patientGender: prescription.patient?.gender,
-      doctorName: prescription.clinic?.doctorName || 'Doctor',
-      clinicName: prescription.clinic?.name || 'Clinic',
-      clinicAddress: prescription.clinic?.address && prescription.clinic?.city 
-        ? `${prescription.clinic.address}, ${prescription.clinic.city}`
+      patientName: prescription.patients?.name || 'Unknown Patient',
+      patientMobile: prescription.patients?.mobile || '',
+      patientAge: prescription.patients?.age,
+      patientGender: prescription.patients?.gender,
+      doctorName: prescription.clinics?.doctorName || 'Doctor',
+      clinicName: prescription.clinics?.name || 'Clinic',
+      clinicAddress: prescription.clinics?.address && prescription.clinics?.city 
+        ? `${prescription.clinics.address}, ${prescription.clinics.city}`
         : '',
-      clinicPhone: prescription.clinic?.phone || '',
+      clinicPhone: prescription.clinics?.phone || '',
       nextVisitDate: prescription.nextVisitDate?.toISOString(),
       notes: prescription.notes || '',
-      clinicLogoUrl: prescription.clinic?.logoUrl,
+      clinicLogoUrl: prescription.clinics?.logoUrl,
       clinicBranding: {
-        primaryColor: prescription.clinic?.primaryColor,
-        secondaryColor: prescription.clinic?.secondaryColor,
-        accentColor: prescription.clinic?.accentColor,
+        primaryColor: prescription.clinics?.primaryColor,
+        secondaryColor: prescription.clinics?.secondaryColor,
+        accentColor: prescription.clinics?.accentColor,
       }
     };
 

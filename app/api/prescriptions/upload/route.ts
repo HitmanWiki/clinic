@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify patient belongs to clinic - Use 'patient' (singular) model
-    const patient = await prisma.patient.findUnique({
+    const patient = await prisma.patients.findUnique({
       where: { 
         id: patientId,
         clinicId: clinicId 

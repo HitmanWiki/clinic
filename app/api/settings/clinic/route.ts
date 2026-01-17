@@ -12,7 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const clinic = await prisma.clinic.findUnique({
+    const clinic = await prisma.clinics.findUnique({
       where: {
         id: session.user.clinicId,
       },
@@ -132,7 +132,7 @@ export async function PUT(request: Request) {
     }
 
     // Update clinic
-    const updatedClinic = await prisma.clinic.update({
+    const updatedClinic = await prisma.clinics.update({
       where: {
         id: session.user.clinicId,
       },
@@ -250,7 +250,7 @@ export async function PATCH(request: Request) {
 
     if (settings) {
       // Merge settings with existing settings
-      const clinic = await prisma.clinic.findUnique({
+      const clinic = await prisma.clinics.findUnique({
         where: { id: session.user.clinicId },
         select: { settings: true }
       });
@@ -275,7 +275,7 @@ export async function PATCH(request: Request) {
     }
 
     // Update clinic
-    const updatedClinic = await prisma.clinic.update({
+    const updatedClinic = await prisma.clinics.update({
       where: {
         id: session.user.clinicId,
       },

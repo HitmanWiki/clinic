@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       console.log('🔓 Test phone detected - authentication bypassed');
       
       // Find which clinic this test patient belongs to
-      const testPatient = await prisma.patient.findFirst({
+      const testPatient = await prisma.patients.findFirst({
         where: {
           mobile: {
             endsWith: TEST_PHONE_DIGITS
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
     }
     
     // ===== SEARCH PATIENT WITH DETAILS =====
-    const patient = await prisma.patient.findFirst({
+    const patient = await prisma.patients.findFirst({
       where: {
         clinicId: targetClinicId,
         mobile: {
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
         }
       },
       include: {
-        clinic: {
+        clinics: {
           select: {
             id: true,
             name: true,
@@ -154,13 +154,13 @@ export async function GET(request: Request) {
         gender: patient.gender || 'Not specified',
         lastVisit: lastVisit?.visitDate?.toISOString() || patient.visitDate.toISOString(),
         lastDiagnosis: lastVisit?.diagnosis,
-        lastDoctor: patient.clinic.doctorName || 'Clinic Doctor',
+        lastDoctor: patient.clinics.doctorName || 'Clinic Doctor',
         medicalRecordNumber: patient.id.slice(-8).toUpperCase(),
         hasAppInstalled: patient.hasAppInstalled,
         lastAppLogin: patient.lastAppLogin?.toISOString(),
         clinicId: patient.clinicId,
         // Include clinic branding info for mobile app
-        clinic: patient.clinic
+        clinic: patient.clinics
       }
     };
     

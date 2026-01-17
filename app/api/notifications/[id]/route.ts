@@ -6,18 +6,17 @@ import { prisma } from '@/lib/prisma';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
-    
-    const notification = await prisma.notification.findFirst({
+    const notification = await prisma.notifications.findFirst({
       where: {
         id,
         clinicId: session.user.clinicId,
@@ -35,13 +34,13 @@ export async function DELETE(
       }, { status: 400 });
     }
     
-    await prisma.notification.delete({
+    await prisma.notifications.delete({
       where: {
         id,
       }
     });
     
-    await prisma.clinic.update({
+    await prisma.clinics.update({
       where: { id: session.user.clinicId },
       data: {
         pushNotificationBalance: {
@@ -66,16 +65,16 @@ export async function DELETE(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.clinicId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
     const body = await request.json();
     const { status, failureReason, message, scheduledDate } = body;
     
@@ -106,7 +105,7 @@ export async function PUT(
       }
     }
     
-    const existingNotification = await prisma.notification.findFirst({
+    const existingNotification = await prisma.notifications.findFirst({
       where: {
         id,
         clinicId: session.user.clinicId,
@@ -117,13 +116,15 @@ export async function PUT(
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
     
-    const notification = await prisma.notification.update({
+    // Update notification and include patient data
+    const notification = await prisma.notifications.update({
       where: {
         id,
       },
       data: updateData,
+      // Use snake_case for relation names
       include: {
-        patient: {
+        patients: {
           select: {
             name: true,
             mobile: true,
@@ -132,13 +133,17 @@ export async function PUT(
       }
     });
 
+    // Cast to any to access the relation since TypeScript doesn't know about it
+    const notificationWithPatient = notification as any;
+    const patient = notificationWithPatient.patients || notificationWithPatient.patient;
+    
     return NextResponse.json({ 
       success: true, 
       notification: {
         id: notification.id,
         patientId: notification.patientId,
-        patientName: notification.patient.name,
-        patientMobile: notification.patient.mobile,
+        patientName: patient?.name || 'Unknown',
+        patientMobile: patient?.mobile || 'Unknown',
         type: notification.type,
         message: notification.message,
         scheduledDate: notification.scheduledDate.toISOString(),

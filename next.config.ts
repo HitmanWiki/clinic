@@ -2,9 +2,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
+  // Remove swcMinify - it's now the default
   images: {
-    domains: ['localhost', 'your-vercel-domain.vercel.app'],
+    // Remove domains and use only remotePatterns
     remotePatterns: [
       {
         protocol: 'http',
@@ -31,11 +31,7 @@ const nextConfig = {
         ]
       }
     ]
-  },
-  // Remove any turbo or experimental config if present
-  // experimental: {
-  //   turbo: {}
-  // }
+  }
 }
 
 module.exports = nextConfig

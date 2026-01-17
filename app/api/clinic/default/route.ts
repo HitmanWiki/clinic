@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   try {
     // Get the first clinic from database
-    const clinic = await prisma.clinic.findFirst({
+    const clinic = await prisma.clinics.findFirst({
       select: {
         id: true,
         name: true,
