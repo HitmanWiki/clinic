@@ -31,7 +31,11 @@ const nextConfig = {
         ]
       }
     ]
-  }
+  },
+  // Remove any turbo or experimental config if present
+  // experimental: {
+  //   turbo: {}
+  // }
 }
 
 module.exports = nextConfig
