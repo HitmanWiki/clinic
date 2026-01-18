@@ -1,58 +1,39 @@
 // /app/api/follow-ups/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("📋 GET /api/follow-ups called");
+    console.log("📋 GET /api/follow-ups called on Vercel");
     
-    // Try to get clinicId from headers (sent by client)
-    const clinicId = request.headers.get('clinicId');
-    const authHeader = request.headers.get('authorization');
+    // 1. Use getServerSession to get the authenticated session
+    const session = await getServerSession(authOptions);
     
-    console.log("🔐 Headers - clinicId:", clinicId);
-    console.log("🔐 Headers - authorization:", authHeader?.substring(0, 20) + '...');
+    console.log("🔐 Session info:", {
+      hasSession: !!session,
+      userId: session?.user?.id,
+      clinicId: session?.user?.clinicId,
+      email: session?.user?.email
+    });
     
-    // Also check cookies for session
-    const cookies = request.cookies.getAll();
-    console.log("🔐 Cookies count:", cookies.length);
-    
-    // If no clinicId in headers, try to extract from session cookie
-    let finalClinicId = clinicId;
-    
-    if (!finalClinicId) {
-      // Check for clinicId in cookies or try alternative auth
-      const sessionCookie = request.cookies.get('next-auth.session-token');
-      if (sessionCookie) {
-        console.log("🔐 Found session cookie");
-        // You might need to decode the JWT token here
-        // For now, let's use a fallback
-      }
+    if (!session?.user?.clinicId) {
+      console.log("❌ No authenticated session or clinicId found");
+      return NextResponse.json({ 
+        error: 'Unauthorized',
+        message: 'Please log in to access this resource'
+      }, { status: 401 });
     }
     
-    // For testing: If we're in development and have no clinicId, use a default
-    if (!finalClinicId && process.env.NODE_ENV === 'development') {
-      console.log("⚠️ Development mode: Using default clinicId");
-      // Check if there's any clinic in the database
-      const firstClinic = await prisma.clinics.findFirst();
-      if (firstClinic) {
-        finalClinicId = firstClinic.id;
-        console.log("🔐 Using clinicId from first clinic:", finalClinicId);
-      }
-    }
+    const clinicId = session.user.clinicId;
+    console.log('✅ Authenticated with clinicId:', clinicId);
     
-    if (!finalClinicId) {
-      console.log("❌ No clinicId found in headers, cookies, or development fallback");
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    console.log('✅ Using clinicId:', finalClinicId);
-    
-    // Get scheduled notifications (these are your "follow-ups")
+    // Get scheduled notifications
     const notifications = await prisma.notifications.findMany({
       where: {
-        clinicId: finalClinicId,
-        status: 'scheduled', // Only get scheduled notifications
+        clinicId: clinicId,
+        status: 'scheduled',
       },
       orderBy: {
         scheduledDate: 'asc',
@@ -68,30 +49,27 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log(`✅ Found ${notifications.length} scheduled notifications in database`);
+    console.log(`✅ Found ${notifications.length} scheduled notifications for clinic ${clinicId}`);
 
-    // Transform data - convert notifications to follow-up format for frontend
+    // Transform data
     const formattedFollowUps = notifications.map((notification: any) => ({
       id: notification.id,
       patientId: notification.patientId,
-      patientName: notification.patients.name,
-      patientMobile: notification.patients.mobile,
-      type: notification.type, // Use notification type (appointment_reminder, medicine_reminder, etc.)
-      scheduledDate: notification.scheduledDate.toISOString().split('T')[0],
-      scheduledTime: notification.scheduledDate.toISOString().split('T')[1].substring(0, 5),
-      status: notification.status, // scheduled, sent, delivered, read, failed
-      channel: notification.deliveryMethod, // push (since you only use push notifications)
+      patientName: notification.patients?.name || 'Unknown Patient',
+      patientMobile: notification.patients?.mobile || 'N/A',
+      type: notification.type || 'reminder',
+      scheduledDate: notification.scheduledDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+      scheduledTime: notification.scheduledDate?.toISOString().split('T')[1]?.substring(0, 5) || '00:00',
+      status: notification.status || 'scheduled',
+      channel: notification.deliveryMethod || 'push',
       message: notification.message || '',
-      // Additional notification-specific fields
-      fcmToken: notification.patients.fcmToken,
-      notificationId: notification.id,
-      category: notification.category,
-      priority: notification.priority,
+      appInstalled: !!notification.patients?.fcmToken,
     }));
 
     return NextResponse.json({ 
       followUps: formattedFollowUps,
-      message: `Found ${formattedFollowUps.length} scheduled notifications`
+      message: `Found ${formattedFollowUps.length} scheduled notifications`,
+      clinicId
     });
     
   } catch (error) {
@@ -107,12 +85,16 @@ export async function POST(request: NextRequest) {
   try {
     console.log("📝 POST /api/follow-ups called");
     
-    const clinicId = request.headers.get('clinicId');
+    // Use getServerSession for authentication
+    const session = await getServerSession(authOptions);
     
-    if (!clinicId) {
-      console.log("❌ No clinicId found in headers");
+    if (!session?.user?.clinicId) {
+      console.log("❌ No authenticated session");
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    
+    const clinicId = session.user.clinicId;
+    console.log('✅ Authenticated POST with clinicId:', clinicId);
 
     const body = await request.json();
     const { 
@@ -154,7 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Patient not found' }, { status: 404 });
     }
     
-    // Check if patient has app installed (for push notifications)
+    // Check if patient has app installed
     if (patient.app_installations.length === 0) {
       return NextResponse.json({ 
         error: 'Patient does not have the app installed',
@@ -185,12 +167,12 @@ export async function POST(request: NextRequest) {
       scheduledDate: new Date(scheduledDate),
       status: 'scheduled' as const,
       priority: 'normal' as const,
-      deliveryMethod: 'push' as const, // Always push since you're only using app notifications
+      deliveryMethod: 'push' as const,
     };
     
-    // Create notification (this is your "follow-up")
+    // Create notification
     const notification = await prisma.notifications.create({
-      data: notificationData as any, // Type assertion to fix TypeScript error
+      data: notificationData as any,
       include: {
         patients: {
           select: {
@@ -211,7 +193,6 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    // Cast to access relation data
     const notificationWithPatient = notification as any;
     const patientData = notificationWithPatient.patients || notificationWithPatient.patient;
     
@@ -247,14 +228,19 @@ export async function DELETE(request: NextRequest) {
   try {
     console.log("🗑️ DELETE /api/follow-ups called");
     
-    const clinicId = request.headers.get('clinicId');
-    const { searchParams } = new URL(request.url);
-    const notificationId = searchParams.get('id');
+    // Use getServerSession for authentication
+    const session = await getServerSession(authOptions);
     
-    if (!clinicId) {
-      console.log("❌ No clinicId found in headers");
+    if (!session?.user?.clinicId) {
+      console.log("❌ No authenticated session");
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    
+    const clinicId = session.user.clinicId;
+    console.log('✅ Authenticated DELETE with clinicId:', clinicId);
+    
+    const { searchParams } = new URL(request.url);
+    const notificationId = searchParams.get('id');
     
     if (!notificationId) {
       return NextResponse.json({ error: 'Notification ID is required' }, { status: 400 });
@@ -272,7 +258,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Notification not found' }, { status: 404 });
     }
     
-    // Only delete if status is 'scheduled' (not yet sent)
+    // Only delete if status is 'scheduled'
     if (notification.status !== 'scheduled') {
       return NextResponse.json({ 
         error: 'Cannot delete notification that has already been sent',
