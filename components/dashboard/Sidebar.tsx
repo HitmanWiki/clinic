@@ -1,4 +1,4 @@
-// /components/dashboard/Sidebar.tsx - RESPONSIVE VERSION WITH CLINIC BRANDING
+// /components/dashboard/Sidebar.tsx - Updated with fixed logout
 "use client";
 
 import { useState, useEffect } from "react";
@@ -40,6 +40,7 @@ export default function DashboardSidebar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clinicData, setClinicData] = useState<Clinic | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   
   // Get colors from clinic data or defaults
   const primaryColor = clinicData?.primaryColor || '#2563EB';
@@ -53,7 +54,6 @@ export default function DashboardSidebar() {
   const fetchClinicData = async () => {
     try {
       setLoading(true);
-      // ✅ CORRECTED: Use the same endpoint as login screen
       const response = await fetch('/api/clinic/default');
       if (response.ok) {
         const data = await response.json();
@@ -94,6 +94,85 @@ export default function DashboardSidebar() {
   const getClinicAddress = () => {
     if (!clinicData) return "";
     return `${clinicData.address}, ${clinicData.city}`;
+  };
+
+  // ============================
+  // ADD THIS LOGOUT FUNCTION
+  // ============================
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      const timestamp = Date.now();
+      
+      console.log("Starting logout process...");
+      
+      // 1. Clear all cookies
+      document.cookie.split(";").forEach(cookie => {
+        const name = cookie.trim().split("=")[0];
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
+      });
+      
+      // 2. Clear NextAuth specific cookies
+      const nextAuthCookies = [
+        'next-auth.session-token',
+        'next-auth.callback-url',
+        'next-auth.csrf-token',
+        '__Secure-next-auth.session-token',
+        '__Secure-next-auth.callback-url',
+        '__Secure-next-auth.csrf-token'
+      ];
+      
+      nextAuthCookies.forEach(cookieName => {
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
+      });
+      
+      // 3. Clear local storage
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Clear specific keys
+      localStorage.removeItem("nextauth.message");
+      sessionStorage.removeItem("nextauth.message");
+      
+      // 4. Clear cache
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          await Promise.all(
+            cacheNames.map(cacheName => caches.delete(cacheName))
+          );
+        } catch (cacheError) {
+          console.log("Cache clearing error:", cacheError);
+        }
+      }
+      
+      // 5. Sign out from NextAuth
+      await signOut({ 
+        redirect: false,
+        callbackUrl: "/auth/login"
+      });
+      
+      console.log("Signed out, redirecting...");
+      
+      // 6. Navigate to login with cache bust
+      // First close mobile menu if open
+      setMobileMenuOpen(false);
+      
+      // Add a small delay to ensure everything is cleared
+      setTimeout(() => {
+        // Force full redirect with cache busting
+        window.location.href = `/auth/login?logout=true&t=${timestamp}`;
+      }, 100);
+      
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Fallback redirect
+      window.location.href = `/auth/login?error=logout`;
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   if (loading) {
@@ -254,12 +333,26 @@ export default function DashboardSidebar() {
               )}
             </div>
           </div>
+          
+          {/* ============================
+              UPDATED LOGOUT BUTTON
+          ============================ */}
           <button
-            onClick={() => signOut({ callbackUrl: "/auth/login" })}
-            className="mt-4 w-full flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="mt-4 w-full flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span className="mr-2">🚪</span>
-            Sign Out
+            {isLoggingOut ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                Logging Out...
+              </>
+            ) : (
+              <>
+                <span className="mr-2">🚪</span>
+                Sign Out
+              </>
+            )}
           </button>
           
           {/* Clinic info footer */}
@@ -388,12 +481,25 @@ export default function DashboardSidebar() {
                 </div>
               )}
               
+              {/* ============================
+                  UPDATED MOBILE LOGOUT BUTTON
+              ============================ */}
               <button
-                onClick={() => signOut({ callbackUrl: "/auth/login" })}
-                className="w-full flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className="w-full flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="mr-2">🚪</span>
-                Sign Out
+                {isLoggingOut ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                    Logging Out...
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">🚪</span>
+                    Sign Out
+                  </>
+                )}
               </button>
             </div>
           </div>
