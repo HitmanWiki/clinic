@@ -61,21 +61,32 @@ export async function GET(
       );
     }
 
-    // Parse the medicines JSON field
+    // Parse the medicines JSON field - handle null/undefined cases
     console.log('📋 Parsing medicines JSON...');
     let medicines: any[] = [];
+    let hasMedicines = false;
+    
     try {
-      if (typeof prescription.medicines === 'string') {
-        medicines = JSON.parse(prescription.medicines);
-      } else if (prescription.medicines && typeof prescription.medicines === 'object') {
-        medicines = Array.isArray(prescription.medicines) 
-          ? prescription.medicines 
-          : [prescription.medicines];
+      // Check if medicines field exists and is not null/undefined
+      if (prescription.medicines !== null && prescription.medicines !== undefined) {
+        if (typeof prescription.medicines === 'string' && prescription.medicines.trim() !== '') {
+          medicines = JSON.parse(prescription.medicines);
+        } else if (typeof prescription.medicines === 'object') {
+          medicines = Array.isArray(prescription.medicines) 
+            ? prescription.medicines 
+            : [prescription.medicines];
+        }
+        
+        // Validate that we actually got medicines
+        hasMedicines = Array.isArray(medicines) && medicines.length > 0;
       }
+      
+      console.log('📋 Has medicines:', hasMedicines);
       console.log('📋 Parsed medicines:', medicines);
     } catch (error) {
       console.error('❌ Error parsing medicines:', error);
       medicines = [];
+      hasMedicines = false;
     }
 
     // Format the response
@@ -84,13 +95,14 @@ export async function GET(
       id: prescription.id,
       date: prescription.createdAt.toISOString(),
       diagnosis: prescription.diagnosis || '',
-      medicines: Array.isArray(medicines) ? medicines.map(med => ({
+      medicines: hasMedicines ? medicines.map(med => ({
         name: med?.name || med?.medicineName || 'Unknown Medicine',
         dosage: med?.dosage || '',
         duration: med?.duration || '',
         instructions: med?.instructions || '',
         timing: med?.timing || med?.frequency || '',
-      })) : [],
+      })) : [], // Empty array if no medicines
+      hasMedicines, // Add flag to indicate if medicines exist
       patientName: prescription.patients?.name || 'Unknown Patient',
       patientMobile: prescription.patients?.mobile || '',
       patientAge: prescription.patients?.age,
@@ -108,7 +120,9 @@ export async function GET(
         primaryColor: prescription.clinics?.primaryColor,
         secondaryColor: prescription.clinics?.secondaryColor,
         accentColor: prescription.clinics?.accentColor,
-      }
+      },
+      // Add enablePushReminders if needed
+      enablePushReminders: prescription.enablePushReminders || false,
     };
 
     console.log('✅ Successfully formatted prescription:', formattedPrescription);

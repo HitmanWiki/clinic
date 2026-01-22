@@ -30,12 +30,22 @@ export async function GET(request: NextRequest) {
 
     // Format response for the prescriptions page
     const formattedPrescriptions = prescriptions.map(prescription => {
-      // Parse medicines to count them
+      // Handle medicines count - medicines can now be null or undefined
       let medicinesCount = 0;
+      
       try {
-        const medicines = JSON.parse(prescription.medicines as string);
-        medicinesCount = Array.isArray(medicines) ? medicines.length : 0;
+        // Check if medicines exists and is not null/undefined
+        if (prescription.medicines !== null && prescription.medicines !== undefined) {
+          // Parse medicines if it's a string, otherwise use directly
+          const medicines = typeof prescription.medicines === 'string' 
+            ? JSON.parse(prescription.medicines as string)
+            : prescription.medicines;
+          
+          medicinesCount = Array.isArray(medicines) ? medicines.length : 0;
+        }
+        // If medicines is null/undefined, count remains 0
       } catch (error) {
+        console.error('Error parsing medicines for prescription:', prescription.id, error);
         medicinesCount = 0;
       }
 
@@ -56,8 +66,11 @@ export async function GET(request: NextRequest) {
         date: prescription.createdAt.toISOString().split('T')[0],
         diagnosis: prescription.diagnosis || '',
         medicinesCount,
-        nextVisitDate: prescription.nextVisitDate?.toISOString().split('T')[0],
+        hasMedicines: medicinesCount > 0, // Add this flag to indicate if medicines exist
+        nextVisitDate: prescription.nextVisitDate?.toISOString().split('T')[0] || null,
         status,
+        createdAt: prescription.createdAt.toISOString(),
+        enablePushReminders: prescription.enablePushReminders || false,
       };
     });
 

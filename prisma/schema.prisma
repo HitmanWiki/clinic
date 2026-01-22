@@ -163,7 +163,7 @@ model prescriptions {
   clinicId            String
   visitDate           DateTime             @default(now())
   diagnosis           String?
-  medicines           Json
+  medicines           Json?
   nextVisitDate       DateTime?
   notes               String?
   createdAt           DateTime             @default(now())

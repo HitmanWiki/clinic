@@ -21,6 +21,7 @@ interface Prescription {
   medicinesCount: number;
   nextVisitDate?: string;
   status: "active" | "completed" | "cancelled";
+  hasMedicines?: boolean;
 }
 
 interface PrescriptionTemplate {
@@ -36,6 +37,7 @@ interface PrescriptionStats {
   active: number;
   today: number;
   templates: number;
+  withoutMedicines: number; // Add this
 }
 
 export default function PrescriptionsPage() {
@@ -52,6 +54,7 @@ export default function PrescriptionsPage() {
     active: 0,
     today: 0,
     templates: 0,
+    withoutMedicines: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +121,10 @@ export default function PrescriptionsPage() {
         p.status === "active"
       ).length || 0;
 
+      const withoutMedicinesCount = prescriptionsData.prescriptions?.filter((p: Prescription) => 
+        p.medicinesCount === 0
+      ).length || 0;
+
       // Fetch templates
       try {
         const templatesResponse = await fetch(`/api/prescriptions/templates`, {
@@ -135,6 +142,7 @@ export default function PrescriptionsPage() {
             active: activeCount,
             today: todayCount,
             templates: templatesData.templates?.length || 0,
+            withoutMedicines: withoutMedicinesCount,
           });
         }
       } catch (templateError) {
@@ -146,6 +154,7 @@ export default function PrescriptionsPage() {
           active: activeCount,
           today: todayCount,
           templates: 0,
+          withoutMedicines: withoutMedicinesCount,
         });
       }
 
@@ -187,7 +196,8 @@ export default function PrescriptionsPage() {
     const matchesFilter = filter === "all" || 
       (filter === "today" && prescription.date === today) ||
       (filter === "week" && prescription.date >= weekAgo) ||
-      (filter === "active" && prescription.status === "active");
+      (filter === "active" && prescription.status === "active") ||
+      (filter === "no-medicines" && prescription.medicinesCount === 0);
 
     return matchesSearch && matchesFilter;
   });
@@ -214,6 +224,25 @@ export default function PrescriptionsPage() {
       backgroundColor: color.bg,
       color: color.text
     };
+  };
+
+  const getMedicineCountBadge = (count: number) => {
+    if (count === 0) {
+      return {
+        backgroundColor: `${branding.accentColor}15`,
+        color: branding.accentColor
+      };
+    } else if (count <= 2) {
+      return {
+        backgroundColor: `${branding.secondaryColor}15`,
+        color: branding.secondaryColor
+      };
+    } else {
+      return {
+        backgroundColor: `${branding.primaryColor}15`,
+        color: branding.primaryColor
+      };
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -255,6 +284,9 @@ export default function PrescriptionsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Prescriptions</h1>
           <p className="text-gray-600">Manage all patient prescriptions</p>
+          <p className="text-sm text-gray-500 mt-1">
+            <span style={{ color: branding.secondaryColor }}>Note:</span> Medicines are optional
+          </p>
         </div>
         <div className="flex space-x-3">
           <button
@@ -312,23 +344,25 @@ export default function PrescriptionsPage() {
           <div className="text-xs mt-1">Needs follow-up</div>
         </div>
         
-        {/* Today Card */}
-        <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-          <div className="text-sm text-gray-500">Today</div>
-          <div className="text-2xl font-bold text-gray-900">
-            {loading ? "..." : stats.today}
-          </div>
-          <div className="text-xs text-gray-500 mt-1">Prescriptions</div>
-        </div>
-        
-        {/* Templates Card */}
+        {/* Without Medicines Card */}
         <div 
           className="bg-white p-4 rounded-lg shadow border transition-colors"
           style={getBrandingStyle('accent')}
         >
-          <div className="text-sm">Templates</div>
-          <div className="text-2xl font-bold">{loading ? "..." : stats.templates}</div>
-          <div className="text-xs mt-1">Saved combinations</div>
+          <div className="text-sm">Without Medicines</div>
+          <div className="text-2xl font-bold">
+            {loading ? "..." : stats.withoutMedicines}
+          </div>
+          <div className="text-xs mt-1">Optional medicines</div>
+        </div>
+        
+        {/* Templates Card */}
+        <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="text-sm text-gray-500">Templates</div>
+          <div className="text-2xl font-bold text-gray-900">
+            {loading ? "..." : stats.templates}
+          </div>
+          <div className="text-xs text-gray-500 mt-1">Saved combinations</div>
         </div>
       </div>
 
@@ -378,20 +412,24 @@ export default function PrescriptionsPage() {
                   
                   <div className="mb-3">
                     <div className="text-xs text-gray-500 mb-1">Medicines:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {template.medicines.map((medicine, idx) => (
-                        <span 
-                          key={idx} 
-                          className="text-xs px-2 py-1 rounded"
-                          style={{
-                            backgroundColor: `${branding.primaryColor}10`,
-                            color: branding.primaryColor
-                          }}
-                        >
-                          {medicine}
-                        </span>
-                      ))}
-                    </div>
+                    {template.medicines && template.medicines.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {template.medicines.map((medicine, idx) => (
+                          <span 
+                            key={idx} 
+                            className="text-xs px-2 py-1 rounded"
+                            style={{
+                              backgroundColor: `${branding.primaryColor}10`,
+                              color: branding.primaryColor
+                            }}
+                          >
+                            {medicine}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-400">No medicines in template</div>
+                    )}
                   </div>
                   
                   <div className="flex space-x-2">
@@ -491,6 +529,7 @@ export default function PrescriptionsPage() {
                 <option value="week">This Week</option>
                 <option value="active">Active Only</option>
                 <option value="completed">Completed</option>
+                <option value="no-medicines">No Medicines</option>
               </select>
             </div>
             
@@ -538,7 +577,18 @@ export default function PrescriptionsPage() {
                       Diagnosis
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Medicines
+                      <div className="flex items-center">
+                        Medicines
+                        <span 
+                          className="ml-1 text-xs px-1 py-0.5 rounded"
+                          style={{
+                            backgroundColor: `${branding.secondaryColor}15`,
+                            color: branding.secondaryColor
+                          }}
+                        >
+                          Optional
+                        </span>
+                      </div>
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Next Visit
@@ -592,8 +642,17 @@ export default function PrescriptionsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {prescription.medicinesCount} medicines
+                          {prescription.medicinesCount > 0 ? (
+                            <span>{prescription.medicinesCount} medicines</span>
+                          ) : (
+                            <span className="text-gray-400">No medicines</span>
+                          )}
                         </div>
+                        {prescription.medicinesCount === 0 && (
+                          <div className="text-xs text-gray-400">
+                            (Optional field)
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
@@ -615,7 +674,7 @@ export default function PrescriptionsPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <Link
-                          href={`/dashboard/patients/${prescription.patientId}`}
+                          href={`/dashboard/prescriptions/${prescription.id}`}
                           className="mr-4 transition-colors hover:opacity-80"
                           style={{ color: branding.primaryColor }}
                         >
@@ -668,6 +727,9 @@ export default function PrescriptionsPage() {
                     <span className="font-medium">{filteredPrescriptions.length}</span> of{" "}
                     <span className="font-medium">{prescriptions.length}</span> prescriptions
                   </div>
+                  <div className="text-sm text-gray-500">
+                    {stats.withoutMedicines} prescriptions without medicines
+                  </div>
                 </div>
               </div>
             )}
@@ -683,10 +745,10 @@ export default function PrescriptionsPage() {
         >
           <h3 className="text-sm font-medium mb-2">💡 Prescription Management Tips</h3>
           <ul className="text-sm space-y-1">
+            <li>• <strong>Medicines are optional</strong> - you can create prescriptions with just diagnosis</li>
             <li>• <strong>Use templates</strong> for common conditions to save time</li>
             <li>• <strong>Filter by status</strong> to track active vs completed prescriptions</li>
             <li>• <strong>Set next visit dates</strong> for automatic patient reminders</li>
-            <li>• <strong>Print prescriptions</strong> for patients who prefer physical copies</li>
           </ul>
         </div>
         
@@ -696,10 +758,10 @@ export default function PrescriptionsPage() {
         >
           <h3 className="text-sm font-medium mb-2">📱 Patient Benefits</h3>
           <ul className="text-sm space-y-1">
-            <li>• Patients receive <strong>medicine reminders</strong> via WhatsApp/SMS</li>
-            <li>• <strong>Digital prescription copy</strong> never gets lost</li>
+            <li>• <strong>Digital prescriptions</strong> ensure records are never lost</li>
+            <li>• <strong>Medicine reminders</strong> via WhatsApp/SMS (if medicines added)</li>
             <li>• <strong>Follow-up reminders</strong> improve treatment compliance</li>
-            <li>• <strong>Review requests</strong> after recovery boost clinic reputation</li>
+            <li>• <strong>Easy prescription sharing</strong> with other doctors</li>
           </ul>
         </div>
       </div>

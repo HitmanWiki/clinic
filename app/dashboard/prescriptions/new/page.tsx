@@ -193,11 +193,14 @@ export default function NewPrescriptionPage() {
   };
 
   const canSubmitForm = (): boolean => {
+    // Only require patientId and diagnosis
     if (!patientId || !diagnosis.trim()) return false;
-    return medicines.some(isValidMedicine);
+    
+    // Medicines are optional, so we don't check them here
+    return true;
   };
 
-  // File upload handlers - FIXED VERSION
+  // File upload handlers
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!patientId) {
       setUploadError("Please select a patient first");
@@ -302,10 +305,19 @@ export default function NewPrescriptionPage() {
       return;
     }
     
+    // Filter only valid medicines (if any are entered)
     const validMedicines = medicines.filter(isValidMedicine);
-    if (validMedicines.length === 0) {
-      setError("Please add at least one medicine with name, dosage, and duration");
-      return;
+    
+    // If there are partially filled medicine entries but not valid ones, show warning
+    const hasPartiallyFilled = medicines.some(med => 
+      (med.name.trim() || med.dosage.trim() || med.duration.trim()) && 
+      !isValidMedicine(med)
+    );
+    
+    if (hasPartiallyFilled) {
+      if (!confirm("Some medicine entries are incomplete. They will be ignored. Continue anyway?")) {
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -319,7 +331,7 @@ export default function NewPrescriptionPage() {
         },
         body: JSON.stringify({
           diagnosis,
-          medicines: validMedicines,
+          medicines: validMedicines.length > 0 ? validMedicines : [], // Send empty array if no valid medicines
           nextVisitDate: nextVisitDate || undefined,
           notes: notes || undefined,
         }),
@@ -397,6 +409,9 @@ export default function NewPrescriptionPage() {
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Create New Prescription</h1>
             <p className="text-gray-600">Fill prescription details for a patient</p>
+            <p className="text-sm text-gray-500 mt-1">
+              <span style={{ color: branding.secondaryColor }}>Note:</span> Medicines are optional
+            </p>
           </div>
           
           {/* Upload Button */}
@@ -758,10 +773,13 @@ export default function NewPrescriptionPage() {
           />
         </div>
 
-        {/* Medicines */}
+        {/* Medicines - Now Optional */}
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-gray-900">3. Medicines *</h2>
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">3. Medicines (Optional)</h2>
+              <p className="text-sm text-gray-500">You can create a prescription without medicines</p>
+            </div>
             <button
               type="button"
               onClick={addMedicine}
@@ -785,7 +803,7 @@ export default function NewPrescriptionPage() {
               }}
             >
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-medium text-gray-900">Medicine #{index + 1}</h3>
+                <h3 className="font-medium text-gray-900">Medicine #{index + 1} (Optional)</h3>
                 {medicines.length > 1 && (
                   <button
                     type="button"
@@ -801,7 +819,7 @@ export default function NewPrescriptionPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Medicine Name *
+                    Medicine Name
                   </label>
                   <input
                     type="text"
@@ -813,13 +831,12 @@ export default function NewPrescriptionPage() {
                       borderColor: `${branding.primaryColor}50`,
                       outlineColor: branding.primaryColor
                     }}
-                    required
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Dosage *
+                    Dosage
                   </label>
                   <input
                     type="text"
@@ -831,7 +848,6 @@ export default function NewPrescriptionPage() {
                       borderColor: `${branding.primaryColor}50`,
                       outlineColor: branding.primaryColor
                     }}
-                    required
                   />
                 </div>
 
@@ -848,7 +864,7 @@ export default function NewPrescriptionPage() {
                       outlineColor: branding.primaryColor
                     }}
                   >
-                    <option value="">Select frequency</option>
+                    <option value="">Select frequency (optional)</option>
                     <option value="Once daily">Once daily</option>
                     <option value="Twice daily">Twice daily</option>
                     <option value="Thrice daily">Thrice daily</option>
@@ -863,7 +879,7 @@ export default function NewPrescriptionPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Duration *
+                    Duration
                   </label>
                   <input
                     type="text"
@@ -875,7 +891,6 @@ export default function NewPrescriptionPage() {
                       borderColor: `${branding.primaryColor}50`,
                       outlineColor: branding.primaryColor
                     }}
-                    required
                   />
                 </div>
 
@@ -901,13 +916,28 @@ export default function NewPrescriptionPage() {
                 style={isValidMedicine(medicine) ? {
                   color: branding.secondaryColor
                 } : {
-                  color: branding.accentColor
+                  color: medicines.length === 1 && index === 0 ? branding.secondaryColor : branding.accentColor
                 }}
               >
-                {isValidMedicine(medicine) ? '✅ Medicine complete' : '❌ Fill required fields (name, dosage, duration)'}
+                {isValidMedicine(medicine) 
+                  ? '✅ Medicine complete' 
+                  : medicines.length === 1 && index === 0 
+                    ? 'Optional: Fill medicine details if needed' 
+                    : '❌ Fill all fields to include this medicine'}
               </div>
             </div>
           ))}
+          
+          {/* Empty medicine state message */}
+          {medicines.length === 1 && !isValidMedicine(medicines[0]) && (
+            <div className="mt-4 p-4 border rounded-lg text-center"
+              style={getBrandingStyle('secondary')}
+            >
+              <div className="text-lg mb-2">💊</div>
+              <p className="font-medium mb-1">No medicines added</p>
+              <p className="text-sm opacity-80">This prescription will be saved with only diagnosis</p>
+            </div>
+          )}
         </div>
 
         {/* Additional Information */}
